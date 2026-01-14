@@ -2,14 +2,14 @@
 
 import { AIPriceEstimate } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Sparkles, TrendingUp, TrendingDown, Minus, AlertTriangle, DollarSign } from 'lucide-react';
+import { Sparkles, TrendingUp, TrendingDown, Minus, AlertTriangle, DollarSign, Tag } from 'lucide-react';
 
 interface AIInsightsPanelProps {
   priceEstimate: AIPriceEstimate;
 }
 
 export function AIInsightsPanel({ priceEstimate }: AIInsightsPanelProps) {
-  const { low, mid, high, confidence, reasoning, demandLevel, redFlags } = priceEstimate;
+  const { low, mid, high, msrp, confidence, reasoning, demandLevel, redFlags } = priceEstimate;
 
   const demandConfig = {
     high: { label: 'High Demand', icon: TrendingUp, color: 'text-green-500' },
@@ -49,6 +49,19 @@ export function AIInsightsPanel({ priceEstimate }: AIInsightsPanelProps) {
             </div>
           </div>
         </div>
+
+        {/* MSRP if available */}
+        {msrp && (
+          <div className="flex items-center gap-4">
+            <div className="text-muted-foreground">
+              <Tag className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Original MSRP</p>
+              <p className="text-sm font-semibold font-mono">${msrp}</p>
+            </div>
+          </div>
+        )}
 
         {/* Demand Level */}
         <div className="flex items-center gap-4">

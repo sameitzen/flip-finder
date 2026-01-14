@@ -4,6 +4,7 @@ export interface AIPriceEstimate {
   low: number;
   mid: number;
   high: number;
+  msrp?: number;
   confidence: number;
   reasoning: string;
   demandLevel: 'high' | 'medium' | 'low';
