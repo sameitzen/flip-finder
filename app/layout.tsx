@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { MobileNav, InstallPrompt } from "@/components/layout";
+import { MobileNav } from "@/components/layout";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -49,7 +49,6 @@ export default function RootLayout({
           {children}
         </div>
         <MobileNav />
-        <InstallPrompt />
       </body>
     </html>
   );
