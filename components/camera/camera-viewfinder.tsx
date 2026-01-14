@@ -59,9 +59,9 @@ export function CameraViewfinder({ onCapture, isProcessing = false }: CameraView
   }
 
   return (
-    <div className="relative flex flex-col h-full bg-black">
+    <div className="relative flex flex-col flex-1 min-h-[400px] bg-black">
       {/* Video feed */}
-      <div className="relative flex-1 overflow-hidden bg-black">
+      <div className="relative flex-1 min-h-[300px] overflow-hidden bg-black">
         {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
         <video
           ref={videoRef}

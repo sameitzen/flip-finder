@@ -30,7 +30,7 @@ export default function Home() {
   };
 
   return (
-    <main className="flex-1 flex flex-col">
+    <main className="flex-1 flex flex-col h-full min-h-0">
       <CameraViewfinder
         onCapture={handleCapture}
         isProcessing={isProcessing}
