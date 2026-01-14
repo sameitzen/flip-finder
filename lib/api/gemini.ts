@@ -5,6 +5,18 @@ import { ItemIdentity, ConditionEstimate, AIPriceEstimate, GeminiError } from '@
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY || '');
 
+// Timeout wrapper for API calls
+const API_TIMEOUT_MS = 30000; // 30 seconds
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error('Request timed out')), ms)
+    ),
+  ]);
+}
+
 const IDENTIFICATION_PROMPT = `You are an expert reseller's assistant with deep knowledge of eBay market values. Analyze this image and identify the item for resale.
 
 Return ONLY a valid JSON object with this exact structure (no markdown, no backticks, just the JSON):
@@ -102,9 +114,22 @@ export async function identifyItemWithGemini(imageBase64: string): Promise<ItemI
   };
 
   try {
-    const result = await model.generateContent([IDENTIFICATION_PROMPT, imagePart]);
+    const result = await withTimeout(
+      model.generateContent([IDENTIFICATION_PROMPT, imagePart]),
+      API_TIMEOUT_MS
+    );
     const response = await result.response;
     const text = response.text();
+
+    // Check for empty response (can happen with content policy blocks)
+    if (!text || text.trim().length === 0) {
+      console.error('Gemini returned empty response - possible content policy block');
+      throw new GeminiError(
+        'Could not analyze this image. Try describing the item instead.',
+        'UNIDENTIFIABLE',
+        false
+      );
+    }
 
     return parseGeminiResponse(text);
   } catch (error) {
@@ -115,6 +140,10 @@ export async function identifyItemWithGemini(imageBase64: string): Promise<ItemI
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('Gemini image identification error:', message);
 
+    // Handle timeout
+    if (message.includes('timed out') || message.includes('timeout')) {
+      throw new GeminiError('Request took too long. Please try again.', 'NETWORK_ERROR', true);
+    }
     // Handle specific error types
     if (message.includes('quota') || message.includes('rate') || message.includes('429')) {
       throw new GeminiError('Too many requests. Please wait a moment and try again.', 'RATE_LIMIT', true);
@@ -124,6 +153,14 @@ export async function identifyItemWithGemini(imageBase64: string): Promise<ItemI
     }
     if (message.includes('parse') || message.includes('JSON')) {
       throw new GeminiError('Failed to understand the response. Please try again.', 'PARSE_ERROR', true);
+    }
+    // Handle content policy / safety blocks
+    if (message.includes('SAFETY') || message.includes('blocked') || message.includes('policy')) {
+      throw new GeminiError(
+        'Could not analyze this image. Try describing the item instead.',
+        'UNIDENTIFIABLE',
+        false
+      );
     }
 
     throw new GeminiError(
@@ -213,12 +250,19 @@ export async function identifyItemFromDescription(description: string): Promise<
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
   try {
-    const result = await model.generateContent([
-      TEXT_IDENTIFICATION_PROMPT,
-      `User's item description: ${description.trim()}`
-    ]);
+    const result = await withTimeout(
+      model.generateContent([
+        TEXT_IDENTIFICATION_PROMPT,
+        `User's item description: ${description.trim()}`
+      ]),
+      API_TIMEOUT_MS
+    );
     const response = await result.response;
     const text = response.text();
+
+    if (!text || text.trim().length === 0) {
+      throw new GeminiError('Could not analyze description. Please try again.', 'PARSE_ERROR', true);
+    }
 
     return parseGeminiResponse(text);
   } catch (error) {
@@ -229,6 +273,9 @@ export async function identifyItemFromDescription(description: string): Promise<
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('Gemini text identification error:', message);
 
+    if (message.includes('timed out') || message.includes('timeout')) {
+      throw new GeminiError('Request took too long. Please try again.', 'NETWORK_ERROR', true);
+    }
     if (message.includes('quota') || message.includes('rate')) {
       throw new GeminiError('Too many requests. Please wait a moment and try again.', 'RATE_LIMIT', true);
     }
