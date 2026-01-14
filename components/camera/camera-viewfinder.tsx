@@ -58,7 +58,6 @@ export function CameraViewfinder({ onCapture, isProcessing = false }: CameraView
           autoPlay
           playsInline
           muted
-          // @ts-expect-error webkit-playsinline is required for iOS Safari
           webkit-playsinline="true"
           className="absolute inset-0 w-full h-full object-cover"
           style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
