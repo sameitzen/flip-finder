@@ -20,6 +20,7 @@ export function useCamera(): UseCameraReturn {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const facingModeRef = useRef<'user' | 'environment'>('environment');
 
   const [status, setStatus] = useState<CameraStatus>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -36,19 +37,22 @@ export function useCamera(): UseCameraReturn {
     setStatus('idle');
   }, []);
 
-  const startCamera = useCallback(async () => {
+  const startCameraWithMode = useCallback(async (mode: 'user' | 'environment') => {
     setStatus('requesting');
     setError(null);
 
     try {
       // Stop any existing stream
-      stopCamera();
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
 
       const constraints: MediaStreamConstraints = {
         video: {
-          facingMode: facingMode,
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
+          facingMode: mode,
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
         },
         audio: false,
       };
@@ -58,6 +62,32 @@ export function useCamera(): UseCameraReturn {
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+
+        // Wait for video metadata to load before playing
+        await new Promise<void>((resolve, reject) => {
+          const video = videoRef.current!;
+
+          const onLoadedMetadata = () => {
+            video.removeEventListener('loadedmetadata', onLoadedMetadata);
+            video.removeEventListener('error', onError);
+            resolve();
+          };
+
+          const onError = () => {
+            video.removeEventListener('loadedmetadata', onLoadedMetadata);
+            video.removeEventListener('error', onError);
+            reject(new Error('Video failed to load'));
+          };
+
+          // If already have metadata, resolve immediately
+          if (video.readyState >= 1) {
+            resolve();
+          } else {
+            video.addEventListener('loadedmetadata', onLoadedMetadata);
+            video.addEventListener('error', onError);
+          }
+        });
+
         await videoRef.current.play();
         setStatus('active');
       }
@@ -72,16 +102,21 @@ export function useCamera(): UseCameraReturn {
         setError(message);
       }
     }
-  }, [facingMode, stopCamera]);
+  }, []);
+
+  const startCamera = useCallback(async () => {
+    await startCameraWithMode(facingModeRef.current);
+  }, [startCameraWithMode]);
 
   const switchCamera = useCallback(async () => {
-    const newFacingMode = facingMode === 'environment' ? 'user' : 'environment';
+    const newFacingMode = facingModeRef.current === 'environment' ? 'user' : 'environment';
+    facingModeRef.current = newFacingMode;
     setFacingMode(newFacingMode);
 
     if (status === 'active') {
-      await startCamera();
+      await startCameraWithMode(newFacingMode);
     }
-  }, [facingMode, status, startCamera]);
+  }, [status, startCameraWithMode]);
 
   const captureImage = useCallback((): string | null => {
     if (!videoRef.current || !canvasRef.current) {

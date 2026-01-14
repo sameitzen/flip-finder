@@ -52,11 +52,14 @@ export function CameraViewfinder({ onCapture, isProcessing = false }: CameraView
     <div className="relative flex flex-col h-full bg-background">
       {/* Video feed */}
       <div className="relative flex-1 overflow-hidden">
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
         <video
           ref={videoRef}
           autoPlay
           playsInline
           muted
+          // @ts-expect-error webkit-playsinline is required for iOS Safari
+          webkit-playsinline="true"
           className="absolute inset-0 w-full h-full object-cover"
           style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
         />
