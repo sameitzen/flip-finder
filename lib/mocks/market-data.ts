@@ -1,4 +1,4 @@
-import { MarketData, MarketSummary, SoldListing, ActiveListing } from '@/lib/types';
+import { MarketData, MarketSummary, SoldListing, ActiveListing, AIPriceEstimate } from '@/lib/types';
 
 function generateSoldListings(
   basePrice: number,
@@ -215,4 +215,145 @@ export async function mockFetchMarketData(searchQuery: string): Promise<MarketDa
     activeListings,
     summary,
   };
+}
+
+/**
+ * Generate realistic market data based on AI price estimates
+ * This uses Gemini's knowledge to create plausible market conditions
+ */
+export function generateMarketDataFromAIEstimate(
+  estimate: AIPriceEstimate,
+  itemName: string
+): MarketData {
+  const { low, mid, high, demandLevel } = estimate;
+
+  // Derive market characteristics from AI estimate
+  const priceSpread = (high - low) / mid;
+  const volatility = Math.min(0.5, Math.max(0.1, priceSpread / 2));
+
+  // Demand level affects sales volume and days to sell
+  const demandMultipliers = {
+    high: { soldCount: 150, activeCount: 40, daysToSell: 3 },
+    medium: { soldCount: 50, activeCount: 30, daysToSell: 10 },
+    low: { soldCount: 15, activeCount: 20, daysToSell: 25 },
+  };
+
+  const multipliers = demandMultipliers[demandLevel];
+
+  // Generate listings centered around the mid estimate
+  const displaySoldCount = Math.min(multipliers.soldCount, 20);
+  const displayActiveCount = Math.min(multipliers.activeCount, 10);
+
+  const soldListings = generateSoldListingsFromEstimate(
+    low,
+    mid,
+    high,
+    displaySoldCount,
+    itemName
+  );
+
+  const activeListings = generateActiveListingsFromEstimate(
+    mid,
+    high,
+    displayActiveCount,
+    itemName
+  );
+
+  // Calculate summary
+  const soldPrices = soldListings.map(l => l.soldPrice).sort((a, b) => a - b);
+  const activePrices = activeListings.map(l => l.currentPrice);
+
+  const avgSoldPrice = soldPrices.reduce((a, b) => a + b, 0) / soldPrices.length;
+  const medianSoldPrice = soldPrices[Math.floor(soldPrices.length / 2)] || mid;
+  const avgActivePrice = activePrices.length > 0
+    ? activePrices.reduce((a, b) => a + b, 0) / activePrices.length
+    : mid * 1.1;
+
+  const summary: MarketSummary = {
+    avgSoldPrice: Math.round(avgSoldPrice * 100) / 100,
+    medianSoldPrice: Math.round(medianSoldPrice * 100) / 100,
+    minSoldPrice: Math.round(low * 100) / 100,
+    maxSoldPrice: Math.round(high * 100) / 100,
+    totalSold30Days: multipliers.soldCount,
+    totalSold90Days: Math.round(multipliers.soldCount * 2.5),
+    avgDaysToSell: multipliers.daysToSell,
+    activeListingCount: multipliers.activeCount,
+    avgActivePrice: Math.round(avgActivePrice * 100) / 100,
+    sellThroughRate: multipliers.soldCount / (multipliers.soldCount + multipliers.activeCount),
+    priceVolatility: Math.round(volatility * 1000) / 1000,
+  };
+
+  return {
+    soldListings,
+    activeListings,
+    summary,
+  };
+}
+
+function generateSoldListingsFromEstimate(
+  low: number,
+  mid: number,
+  high: number,
+  count: number,
+  itemName: string
+): SoldListing[] {
+  const listings: SoldListing[] = [];
+  const now = Date.now();
+
+  for (let i = 0; i < count; i++) {
+    // Use a distribution that clusters around mid but spans low to high
+    const random = Math.random();
+    let price: number;
+
+    if (random < 0.15) {
+      // 15% sell at low end
+      price = low + (mid - low) * 0.3 * Math.random();
+    } else if (random < 0.85) {
+      // 70% sell around mid
+      price = mid + (Math.random() - 0.5) * (high - low) * 0.4;
+    } else {
+      // 15% sell at high end
+      price = mid + (high - mid) * (0.5 + 0.5 * Math.random());
+    }
+
+    // Ensure price stays within bounds
+    price = Math.max(low * 0.9, Math.min(high * 1.1, price));
+
+    const daysAgo = Math.floor(Math.random() * 30);
+
+    listings.push({
+      title: `${itemName} - Sold`,
+      soldPrice: Math.round(price * 100) / 100,
+      soldDate: new Date(now - daysAgo * 24 * 60 * 60 * 1000),
+      condition: ['Used - Like New', 'Used - Good', 'Used - Fair'][Math.floor(Math.random() * 3)],
+      shippingCost: Math.random() > 0.5 ? 0 : Math.round(Math.random() * 12),
+    });
+  }
+
+  return listings.sort((a, b) => b.soldDate.getTime() - a.soldDate.getTime());
+}
+
+function generateActiveListingsFromEstimate(
+  mid: number,
+  high: number,
+  count: number,
+  itemName: string
+): ActiveListing[] {
+  const listings: ActiveListing[] = [];
+
+  for (let i = 0; i < count; i++) {
+    // Active listings tend to be priced higher (optimistic sellers)
+    const price = mid + (high - mid) * (0.2 + Math.random() * 0.8);
+
+    listings.push({
+      title: `${itemName} - Listed`,
+      currentPrice: Math.round(price * 100) / 100,
+      listingType: Math.random() > 0.7 ? 'auction' : 'buy-it-now',
+      bids: Math.random() > 0.7 ? Math.floor(Math.random() * 10) : undefined,
+      watchers: Math.floor(Math.random() * 25),
+      condition: ['Used - Like New', 'Used - Good', 'Used - Fair'][Math.floor(Math.random() * 3)],
+    });
+  }
+
+  return listings;
 }

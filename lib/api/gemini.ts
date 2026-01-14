@@ -1,11 +1,11 @@
 'use server';
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { ItemIdentity, ConditionEstimate } from '@/lib/types';
+import { ItemIdentity, ConditionEstimate, AIPriceEstimate } from '@/lib/types';
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY || '');
 
-const IDENTIFICATION_PROMPT = `You are an expert reseller's assistant. Analyze this image and identify the item for resale on eBay.
+const IDENTIFICATION_PROMPT = `You are an expert reseller's assistant with deep knowledge of eBay market values. Analyze this image and identify the item for resale.
 
 Return ONLY a valid JSON object with this exact structure (no markdown, no backticks, just the JSON):
 {
@@ -18,7 +18,16 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no backt
   "searchQuery": "Optimized eBay search query",
   "keywords": ["keyword1", "keyword2", "keyword3"],
   "era": "Decade or 'Vintage' if applicable",
-  "isPNWTreasure": true if Pacific Northwest brand (Filson, Pendleton, Pacific Stoneware, etc)
+  "isPNWTreasure": true if Pacific Northwest brand (Filson, Pendleton, Pacific Stoneware, etc),
+  "priceEstimate": {
+    "low": lowest realistic selling price in USD,
+    "mid": most likely selling price in USD,
+    "high": best-case selling price in USD,
+    "confidence": 0.0 to 1.0 (how confident you are in this estimate),
+    "reasoning": "Brief explanation of price factors",
+    "demandLevel": "high|medium|low",
+    "redFlags": ["any concerns like reproduction, damage, missing parts"]
+  }
 }
 
 Condition guidelines:
@@ -27,6 +36,15 @@ Condition guidelines:
 - good: Light wear, fully functional
 - fair: Moderate wear, some cosmetic issues
 - poor: Heavy wear, may need repair
+
+Price estimation guidelines:
+- Base estimates on typical eBay sold prices for this exact item in this condition
+- Consider brand reputation, rarity, collectibility, and current demand
+- Low price = quick sale / poor photos / competitive market
+- Mid price = typical well-listed item
+- High price = patient seller / exceptional condition / rare variant
+- For vintage/collectible items, factor in age and desirability
+- For common items, prices are usually lower due to competition
 
 Be specific with the search query - include brand, model, color, size if visible.
 For vintage items, include the era. For PNW brands from Washington/Oregon, set isPNWTreasure to true.`;
@@ -77,6 +95,22 @@ export async function identifyItemWithGemini(imageBase64: string): Promise<ItemI
       ? parsed.condition
       : 'good';
 
+    // Parse price estimate if provided
+    let priceEstimate: AIPriceEstimate | undefined;
+    if (parsed.priceEstimate) {
+      const pe = parsed.priceEstimate;
+      const validDemandLevels = ['high', 'medium', 'low'] as const;
+      priceEstimate = {
+        low: Math.max(0, Number(pe.low) || 0),
+        mid: Math.max(0, Number(pe.mid) || 0),
+        high: Math.max(0, Number(pe.high) || 0),
+        confidence: Math.min(1, Math.max(0, Number(pe.confidence) || 0.5)),
+        reasoning: pe.reasoning || 'No reasoning provided',
+        demandLevel: validDemandLevels.includes(pe.demandLevel) ? pe.demandLevel : 'medium',
+        redFlags: Array.isArray(pe.redFlags) ? pe.redFlags : undefined,
+      };
+    }
+
     return {
       name: parsed.name || 'Unknown Item',
       brand: parsed.brand || 'Unknown',
@@ -88,6 +122,7 @@ export async function identifyItemWithGemini(imageBase64: string): Promise<ItemI
       keywords: Array.isArray(parsed.keywords) ? parsed.keywords : [],
       era: parsed.era,
       isPNWTreasure: Boolean(parsed.isPNWTreasure),
+      priceEstimate,
     };
   } catch (parseError) {
     console.error('Failed to parse Gemini response:', text);

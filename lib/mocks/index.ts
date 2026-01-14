@@ -1,2 +1,2 @@
 export { mockIdentifyItem, mockAIResponses } from './ai-responses';
-export { mockFetchMarketData } from './market-data';
+export { mockFetchMarketData, generateMarketDataFromAIEstimate } from './market-data';

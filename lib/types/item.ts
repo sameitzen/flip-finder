@@ -1,5 +1,15 @@
 export type ConditionEstimate = 'new' | 'like-new' | 'good' | 'fair' | 'poor';
 
+export interface AIPriceEstimate {
+  low: number;
+  mid: number;
+  high: number;
+  confidence: number;
+  reasoning: string;
+  demandLevel: 'high' | 'medium' | 'low';
+  redFlags?: string[];
+}
+
 export interface ItemIdentity {
   name: string;
   brand: string;
@@ -11,4 +21,5 @@ export interface ItemIdentity {
   keywords: string[];
   era?: string;
   isPNWTreasure?: boolean;
+  priceEstimate?: AIPriceEstimate;
 }
