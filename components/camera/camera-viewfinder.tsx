@@ -126,6 +126,12 @@ export function CameraViewfinder({ onCapture, isProcessing = false }: CameraView
             <RefreshCw className="w-5 h-5" />
           </Button>
         )}
+
+        {/* Debug info - temporary */}
+        <div className="absolute top-4 left-4 bg-black/70 text-white text-xs px-2 py-1 rounded font-mono">
+          Status: {status}
+          {error && <div className="text-red-400 mt-1">{error}</div>}
+        </div>
       </div>
 
       {/* Capture button - always in thumb zone */}
