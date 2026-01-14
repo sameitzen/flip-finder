@@ -3,3 +3,4 @@ export { VestScoreDisplay } from './vest-score-display';
 export { ProfitSlider } from './profit-slider';
 export { MarketDataPanel } from './market-data-panel';
 export { ItemIdentification } from './item-identification';
+export { AIInsightsPanel } from './ai-insights-panel';

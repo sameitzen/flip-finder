@@ -10,6 +10,7 @@ import {
   VestScoreDisplay,
   ProfitSlider,
   MarketDataPanel,
+  AIInsightsPanel,
 } from '@/components/results';
 import { Button } from '@/components/ui/button';
 import { Save, RotateCcw } from 'lucide-react';
@@ -141,6 +142,11 @@ export default function ResultsPage() {
 
         {/* Market data */}
         <MarketDataPanel summary={scanData.marketData.summary} />
+
+        {/* AI Insights - only show if we have price estimate data */}
+        {scanData.itemIdentity.priceEstimate && (
+          <AIInsightsPanel priceEstimate={scanData.itemIdentity.priceEstimate} />
+        )}
 
         {/* Action buttons */}
         <div className="flex gap-3 pt-2">
