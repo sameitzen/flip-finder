@@ -130,7 +130,7 @@ export function CameraViewfinder({ onCapture, isProcessing = false }: CameraView
       </div>
 
       {/* Capture button - compact for mobile */}
-      <div className="flex-shrink-0 py-4 px-4 safe-bottom bg-gradient-to-t from-background to-transparent">
+      <div className="flex-shrink-0 py-2 px-4 bg-gradient-to-t from-background to-transparent">
         <CaptureButton
           onCapture={handleCapture}
           disabled={status !== 'active' || isProcessing}

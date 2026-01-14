@@ -26,8 +26,8 @@ export function CaptureButton({ onCapture, disabled = false, isProcessing = fals
         onClick={handleClick}
         disabled={disabled || isProcessing}
         className={cn(
-          'relative w-20 h-20 rounded-full',
-          'bg-white/10 border-4 border-white',
+          'relative w-16 h-16 rounded-full',
+          'bg-white/10 border-[3px] border-white',
           'flex items-center justify-center',
           'transition-all duration-200',
           'touch-target',
@@ -40,7 +40,7 @@ export function CaptureButton({ onCapture, disabled = false, isProcessing = fals
         {/* Inner circle */}
         <div
           className={cn(
-            'w-14 h-14 rounded-full',
+            'w-11 h-11 rounded-full',
             'transition-all duration-200',
             isProcessing
               ? 'bg-primary/50 animate-pulse'
