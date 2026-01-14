@@ -36,7 +36,7 @@ export async function identifyItemWithGemini(imageBase64: string): Promise<ItemI
     throw new Error('GOOGLE_AI_API_KEY not configured');
   }
 
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
   // Extract the base64 data (remove data URL prefix if present)
   const base64Data = imageBase64.includes(',')
