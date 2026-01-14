@@ -94,28 +94,40 @@ Since you're working from a description (not an image), assume "good" condition 
 Set confidence based on how specific the user's description is.
 Be realistic with price estimates based on typical eBay sold prices.`;
 
-export async function identifyItemWithGemini(imageBase64: string): Promise<ItemIdentity> {
+/**
+ * Identify an item from one or more images
+ * When multiple images are provided, Gemini will analyze all of them together
+ * to get a more accurate identification (e.g., front, back, bottom of an item)
+ */
+export async function identifyItemWithGemini(imageBase64: string | string[]): Promise<ItemIdentity> {
   if (!process.env.GOOGLE_AI_API_KEY) {
     throw new GeminiError('GOOGLE_AI_API_KEY not configured', 'API_KEY_MISSING', false);
   }
 
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
-  // Extract the base64 data (remove data URL prefix if present)
-  const base64Data = imageBase64.includes(',')
-    ? imageBase64.split(',')[1]
-    : imageBase64;
+  // Normalize to array
+  const images = Array.isArray(imageBase64) ? imageBase64 : [imageBase64];
 
-  const imagePart = {
-    inlineData: {
-      data: base64Data,
-      mimeType: 'image/jpeg',
-    },
-  };
+  // Create image parts for all images
+  const imageParts = images.map((img, index) => {
+    const base64Data = img.includes(',') ? img.split(',')[1] : img;
+    return {
+      inlineData: {
+        data: base64Data,
+        mimeType: 'image/jpeg',
+      },
+    };
+  });
+
+  // Build the prompt - adjust for multiple images
+  const prompt = images.length > 1
+    ? `${IDENTIFICATION_PROMPT}\n\nYou are being shown ${images.length} images of the same item from different angles. Use ALL images together to identify the item more accurately. Look for brand markings, model numbers, condition details, and any text visible across all photos.`
+    : IDENTIFICATION_PROMPT;
 
   try {
     const result = await withTimeout(
-      model.generateContent([IDENTIFICATION_PROMPT, imagePart]),
+      model.generateContent([prompt, ...imageParts]),
       API_TIMEOUT_MS
     );
     const response = await result.response;

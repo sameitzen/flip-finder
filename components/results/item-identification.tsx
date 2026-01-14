@@ -1,28 +1,33 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { ItemIdentity } from '@/lib/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sparkles, MapPin, Edit3, Send, X, Loader2 } from 'lucide-react';
+import { Sparkles, MapPin, Edit3, Send, X, Loader2, Plus, Camera, Image as ImageIcon } from 'lucide-react';
 
 interface ItemIdentificationProps {
   item: ItemIdentity;
-  imageBase64?: string;
+  images?: string[];
   onCorrect?: (description: string) => Promise<void>;
+  onAddImages?: (newImages: string[]) => Promise<void>;
   isCorreecting?: boolean;
+  isRefining?: boolean;
 }
 
 export function ItemIdentification({
   item,
-  imageBase64,
+  images = [],
   onCorrect,
+  onAddImages,
   isCorreecting = false,
+  isRefining = false,
 }: ItemIdentificationProps) {
   const [showCorrectInput, setShowCorrectInput] = useState(false);
   const [correction, setCorrection] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const confidencePercent = Math.round(item.confidence * 100);
 
   const handleSubmitCorrection = async () => {
@@ -32,20 +37,77 @@ export function ItemIdentification({
     setCorrection('');
   };
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !onAddImages) return;
+
+    const newImages: string[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.type.startsWith('image/')) {
+        const base64 = await fileToBase64(file);
+        newImages.push(base64);
+      }
+    }
+
+    if (newImages.length > 0) {
+      await onAddImages(newImages);
+    }
+
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const primaryImage = images[0];
+  const additionalImages = images.slice(1);
+
   return (
     <Card className="border-border/50 bg-card/50 overflow-hidden">
       <CardContent className="p-0">
         <div className="flex gap-4 p-4">
-          {/* Item image */}
-          {imageBase64 && (
-            <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 bg-muted">
-              <img
-                src={imageBase64}
-                alt={item.name}
-                className="w-full h-full object-cover"
-              />
+          {/* Images section */}
+          <div className="flex-shrink-0">
+            <div className="flex gap-2">
+              {/* Primary image */}
+              {primaryImage && (
+                <div className="w-20 h-20 rounded-lg overflow-hidden bg-muted">
+                  <img
+                    src={primaryImage}
+                    alt={item.name}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
+
+              {/* Additional images thumbnails */}
+              {additionalImages.length > 0 && (
+                <div className="flex flex-col gap-1">
+                  {additionalImages.slice(0, 2).map((img, idx) => (
+                    <div key={idx} className="w-9 h-9 rounded overflow-hidden bg-muted">
+                      <img src={img} alt="" className="w-full h-full object-cover" />
+                    </div>
+                  ))}
+                  {additionalImages.length > 2 && (
+                    <div className="w-9 h-9 rounded bg-muted/50 flex items-center justify-center text-xs text-muted-foreground">
+                      +{additionalImages.length - 2}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          )}
+          </div>
 
           {/* Item details */}
           <div className="flex-1 min-w-0">
@@ -85,17 +147,54 @@ export function ItemIdentification({
           </div>
         </div>
 
-        {/* Not quite right? correction section */}
-        {onCorrect && (
+        {/* Action buttons: Add photos & Correct */}
+        {(onAddImages || onCorrect) && (
           <div className="border-t border-border/50 px-4 py-3">
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+
             {!showCorrectInput ? (
-              <button
-                onClick={() => setShowCorrectInput(true)}
-                className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <Edit3 className="w-3.5 h-3.5" />
-                Not quite right? Correct it
-              </button>
+              <div className="flex items-center gap-4">
+                {/* Add more photos button */}
+                {onAddImages && (
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isRefining}
+                    className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                  >
+                    {isRefining ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="w-3.5 h-3.5" />
+                    )}
+                    {isRefining ? 'Refining...' : 'Add more photos'}
+                  </button>
+                )}
+
+                {/* Separator */}
+                {onAddImages && onCorrect && (
+                  <span className="text-border">|</span>
+                )}
+
+                {/* Correct button */}
+                {onCorrect && (
+                  <button
+                    onClick={() => setShowCorrectInput(true)}
+                    disabled={isCorreecting || isRefining}
+                    className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    Not quite right?
+                  </button>
+                )}
+              </div>
             ) : (
               <div className="space-y-2">
                 <p className="text-xs text-muted-foreground">

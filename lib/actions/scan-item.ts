@@ -16,16 +16,21 @@ export type ScanResponse =
   | { success: true; data: ScanResult }
   | { success: false; error: ScanError };
 
-export async function scanItem(imageBase64: string): Promise<ScanResponse> {
+/**
+ * Scan item from one or more images
+ * Multiple images are analyzed together for better identification
+ */
+export async function scanItem(imageBase64: string | string[]): Promise<ScanResponse> {
   // Step 1: Identify the item using AI (real Gemini or mock)
   let itemIdentity: ItemIdentity;
 
   const hasApiKey = !!process.env.GOOGLE_AI_API_KEY;
-  console.log('Gemini API key present:', hasApiKey);
+  const imageCount = Array.isArray(imageBase64) ? imageBase64.length : 1;
+  console.log('Gemini API key present:', hasApiKey, '| Images:', imageCount);
 
   if (hasApiKey) {
     try {
-      console.log('Calling Gemini API...');
+      console.log('Calling Gemini API with', imageCount, 'image(s)...');
       itemIdentity = await identifyItemWithGemini(imageBase64);
       console.log('Gemini response:', itemIdentity.name);
       if (itemIdentity.priceEstimate) {
@@ -60,7 +65,8 @@ export async function scanItem(imageBase64: string): Promise<ScanResponse> {
     }
   } else {
     console.log('No API key, using mock data');
-    itemIdentity = await mockIdentifyItem(imageBase64);
+    const firstImage = Array.isArray(imageBase64) ? imageBase64[0] : imageBase64;
+    itemIdentity = await mockIdentifyItem(firstImage);
   }
 
   // Step 2: Fetch market data

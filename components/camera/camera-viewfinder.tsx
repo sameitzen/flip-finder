@@ -4,13 +4,22 @@ import { useEffect, useRef } from 'react';
 import { useCamera } from '@/hooks/use-camera';
 import { CaptureButton } from './capture-button';
 import { CameraPermissions } from './camera-permissions';
-import { Camera, RefreshCw } from 'lucide-react';
+import { Camera, RefreshCw, Image as ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface CameraViewfinderProps {
   onCapture: (imageBase64: string) => void;
   isProcessing?: boolean;
 }
+
+const fileToBase64 = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
 
 export function CameraViewfinder({ onCapture, isProcessing = false }: CameraViewfinderProps) {
   const {
@@ -26,6 +35,23 @@ export function CameraViewfinder({ onCapture, isProcessing = false }: CameraView
   } = useCamera();
 
   const hasStartedRef = useRef(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const file = files[0];
+    if (file.type.startsWith('image/')) {
+      const base64 = await fileToBase64(file);
+      onCapture(base64);
+    }
+
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
 
   useEffect(() => {
     // Only start camera once on mount
@@ -125,6 +151,27 @@ export function CameraViewfinder({ onCapture, isProcessing = false }: CameraView
           >
             <RefreshCw className="w-5 h-5" />
           </Button>
+        )}
+
+        {/* Gallery upload button */}
+        {status === 'active' && !isProcessing && (
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => fileInputRef.current?.click()}
+              className="absolute bottom-4 left-4 bg-black/30 hover:bg-black/50 text-white rounded-full"
+            >
+              <ImageIcon className="w-5 h-5" />
+            </Button>
+          </>
         )}
 
       </div>
