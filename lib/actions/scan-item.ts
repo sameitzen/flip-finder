@@ -9,14 +9,20 @@ export async function scanItem(imageBase64: string): Promise<ScanResult> {
   // Step 1: Identify the item using AI (real Gemini or mock)
   let itemIdentity;
 
-  if (process.env.GOOGLE_AI_API_KEY) {
+  const hasApiKey = !!process.env.GOOGLE_AI_API_KEY;
+  console.log('Gemini API key present:', hasApiKey);
+
+  if (hasApiKey) {
     try {
+      console.log('Calling Gemini API...');
       itemIdentity = await identifyItemWithGemini(imageBase64);
+      console.log('Gemini response:', itemIdentity.name);
     } catch (error) {
       console.error('Gemini API error, falling back to mock:', error);
       itemIdentity = await mockIdentifyItem(imageBase64);
     }
   } else {
+    console.log('No API key, using mock data');
     itemIdentity = await mockIdentifyItem(imageBase64);
   }
 
