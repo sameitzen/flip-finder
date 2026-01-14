@@ -59,9 +59,9 @@ export function CameraViewfinder({ onCapture, isProcessing = false }: CameraView
   }
 
   return (
-    <div className="relative flex flex-col flex-1 min-h-[400px] bg-black">
-      {/* Video feed */}
-      <div className="relative flex-1 min-h-[300px] overflow-hidden bg-black">
+    <div className="relative flex flex-col flex-1 bg-black">
+      {/* Video feed - takes remaining space */}
+      <div className="relative flex-1 overflow-hidden bg-black">
         {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
         <video
           ref={videoRef}
@@ -127,15 +127,10 @@ export function CameraViewfinder({ onCapture, isProcessing = false }: CameraView
           </Button>
         )}
 
-        {/* Debug info - temporary */}
-        <div className="absolute top-4 left-4 bg-black/70 text-white text-xs px-2 py-1 rounded font-mono">
-          Status: {status}
-          {error && <div className="text-red-400 mt-1">{error}</div>}
-        </div>
       </div>
 
-      {/* Capture button - always in thumb zone */}
-      <div className="flex-shrink-0 py-6 px-4 safe-bottom bg-gradient-to-t from-background to-transparent">
+      {/* Capture button - compact for mobile */}
+      <div className="flex-shrink-0 py-4 px-4 safe-bottom bg-gradient-to-t from-background to-transparent">
         <CaptureButton
           onCapture={handleCapture}
           disabled={status !== 'active' || isProcessing}

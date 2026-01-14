@@ -43,9 +43,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased h-dvh overflow-hidden`}
       >
-        <div className="flex flex-col h-screen pb-20">
+        <div className="flex flex-col h-full pb-16">
           {children}
         </div>
         <MobileNav />
