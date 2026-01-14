@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useCamera, CameraStatus } from '@/hooks/use-camera';
+import { useEffect, useRef } from 'react';
+import { useCamera } from '@/hooks/use-camera';
 import { CaptureButton } from './capture-button';
 import { CameraPermissions } from './camera-permissions';
 import { Camera, RefreshCw } from 'lucide-react';
@@ -25,10 +25,20 @@ export function CameraViewfinder({ onCapture, isProcessing = false }: CameraView
     facingMode,
   } = useCamera();
 
+  const hasStartedRef = useRef(false);
+
   useEffect(() => {
-    startCamera();
-    return () => stopCamera();
-  }, [startCamera, stopCamera]);
+    // Only start camera once on mount
+    if (!hasStartedRef.current) {
+      hasStartedRef.current = true;
+      startCamera();
+    }
+
+    return () => {
+      stopCamera();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleCapture = () => {
     const image = captureImage();
@@ -49,9 +59,9 @@ export function CameraViewfinder({ onCapture, isProcessing = false }: CameraView
   }
 
   return (
-    <div className="relative flex flex-col h-full bg-background">
+    <div className="relative flex flex-col h-full bg-black">
       {/* Video feed */}
-      <div className="relative flex-1 overflow-hidden">
+      <div className="relative flex-1 overflow-hidden bg-black">
         {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
         <video
           ref={videoRef}
@@ -60,7 +70,11 @@ export function CameraViewfinder({ onCapture, isProcessing = false }: CameraView
           muted
           webkit-playsinline="true"
           className="absolute inset-0 w-full h-full object-cover"
-          style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
+          style={{
+            transform: facingMode === 'user' ? 'scaleX(-1)' : 'none',
+            minHeight: '100%',
+            minWidth: '100%',
+          }}
         />
 
         {/* Hidden canvas for capture */}

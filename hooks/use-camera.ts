@@ -21,10 +21,19 @@ export function useCamera(): UseCameraReturn {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const facingModeRef = useRef<'user' | 'environment'>('environment');
+  const mountedRef = useRef(true);
 
   const [status, setStatus] = useState<CameraStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
+
+  // Track mounted state
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
@@ -34,10 +43,14 @@ export function useCamera(): UseCameraReturn {
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-    setStatus('idle');
+    if (mountedRef.current) {
+      setStatus('idle');
+    }
   }, []);
 
   const startCameraWithMode = useCallback(async (mode: 'user' | 'environment') => {
+    if (!mountedRef.current) return;
+
     setStatus('requesting');
     setError(null);
 
@@ -48,55 +61,81 @@ export function useCamera(): UseCameraReturn {
         streamRef.current = null;
       }
 
+      // Simpler constraints for better mobile compatibility
       const constraints: MediaStreamConstraints = {
         video: {
-          facingMode: mode,
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          facingMode: { ideal: mode },
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
         },
         audio: false,
       };
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+      if (!mountedRef.current) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
+
       streamRef.current = stream;
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-
-        // Wait for video metadata to load before playing
-        await new Promise<void>((resolve, reject) => {
-          const video = videoRef.current!;
-
-          const onLoadedMetadata = () => {
-            video.removeEventListener('loadedmetadata', onLoadedMetadata);
-            video.removeEventListener('error', onError);
-            resolve();
-          };
-
-          const onError = () => {
-            video.removeEventListener('loadedmetadata', onLoadedMetadata);
-            video.removeEventListener('error', onError);
-            reject(new Error('Video failed to load'));
-          };
-
-          // If already have metadata, resolve immediately
-          if (video.readyState >= 1) {
-            resolve();
-          } else {
-            video.addEventListener('loadedmetadata', onLoadedMetadata);
-            video.addEventListener('error', onError);
-          }
-        });
-
-        await videoRef.current.play();
-        setStatus('active');
+      const video = videoRef.current;
+      if (!video) {
+        throw new Error('Video element not found');
       }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to access camera';
 
-      if (message.includes('Permission denied') || message.includes('NotAllowedError')) {
+      video.srcObject = stream;
+
+      // Wait for video to be ready to play
+      await new Promise<void>((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          reject(new Error('Video load timeout'));
+        }, 10000);
+
+        const onCanPlay = () => {
+          clearTimeout(timeoutId);
+          video.removeEventListener('canplay', onCanPlay);
+          video.removeEventListener('error', onError);
+          resolve();
+        };
+
+        const onError = (e: Event) => {
+          clearTimeout(timeoutId);
+          video.removeEventListener('canplay', onCanPlay);
+          video.removeEventListener('error', onError);
+          reject(new Error('Video error: ' + (e as ErrorEvent).message));
+        };
+
+        // Check if already ready
+        if (video.readyState >= 3) {
+          clearTimeout(timeoutId);
+          resolve();
+        } else {
+          video.addEventListener('canplay', onCanPlay);
+          video.addEventListener('error', onError);
+        }
+      });
+
+      if (!mountedRef.current) return;
+
+      // Play the video
+      await video.play();
+
+      if (!mountedRef.current) return;
+
+      setStatus('active');
+    } catch (err) {
+      if (!mountedRef.current) return;
+
+      const message = err instanceof Error ? err.message : 'Failed to access camera';
+      console.error('Camera error:', message);
+
+      if (message.includes('Permission denied') ||
+          message.includes('NotAllowedError') ||
+          message.includes('permission')) {
         setStatus('denied');
-        setError('Camera access denied. Please enable camera permissions.');
+        setError('Camera access denied. Please enable camera permissions in your browser settings.');
       } else {
         setStatus('error');
         setError(message);
