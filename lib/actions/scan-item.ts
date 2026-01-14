@@ -1,13 +1,24 @@
 'use server';
 
-import { identifyItemWithGemini } from '@/lib/api/gemini';
+import { identifyItemWithGemini, identifyItemFromDescription } from '@/lib/api/gemini';
 import { mockIdentifyItem, mockFetchMarketData, generateMarketDataFromAIEstimate } from '@/lib/mocks';
 import { calculateVestScore } from '@/lib/vest';
-import { ScanResult, MarketData } from '@/lib/types';
+import { ScanResult, MarketData, ItemIdentity, GeminiError } from '@/lib/types';
 
-export async function scanItem(imageBase64: string): Promise<ScanResult> {
+export interface ScanError {
+  message: string;
+  code: string;
+  retryable: boolean;
+  suggestTextInput: boolean;
+}
+
+export type ScanResponse =
+  | { success: true; data: ScanResult }
+  | { success: false; error: ScanError };
+
+export async function scanItem(imageBase64: string): Promise<ScanResponse> {
   // Step 1: Identify the item using AI (real Gemini or mock)
-  let itemIdentity;
+  let itemIdentity: ItemIdentity;
 
   const hasApiKey = !!process.env.GOOGLE_AI_API_KEY;
   console.log('Gemini API key present:', hasApiKey);
@@ -21,8 +32,31 @@ export async function scanItem(imageBase64: string): Promise<ScanResult> {
         console.log('AI price estimate:', itemIdentity.priceEstimate.mid);
       }
     } catch (error) {
-      console.error('Gemini API error, falling back to mock:', error);
-      itemIdentity = await mockIdentifyItem(imageBase64);
+      console.error('Gemini API error:', error);
+
+      // Handle GeminiError with user-friendly messages
+      if (error instanceof GeminiError) {
+        return {
+          success: false,
+          error: {
+            message: error.message,
+            code: error.code,
+            retryable: error.retryable,
+            suggestTextInput: error.code === 'UNIDENTIFIABLE' || error.code === 'PARSE_ERROR',
+          },
+        };
+      }
+
+      // Generic error fallback
+      return {
+        success: false,
+        error: {
+          message: 'Failed to analyze image. Please try again or describe the item manually.',
+          code: 'UNKNOWN',
+          retryable: true,
+          suggestTextInput: true,
+        },
+      };
     }
   } else {
     console.log('No API key, using mock data');
@@ -49,10 +83,84 @@ export async function scanItem(imageBase64: string): Promise<ScanResult> {
   const vestScore = calculateVestScore(marketData, { buyPrice: suggestedBuyPrice });
 
   return {
-    itemIdentity,
-    marketData,
-    vestScore,
+    success: true,
+    data: {
+      itemIdentity,
+      marketData,
+      vestScore,
+    },
   };
+}
+
+/**
+ * Re-identify an item using a text description
+ * Used when the image identification was wrong or failed
+ */
+export async function identifyFromText(description: string): Promise<ScanResponse> {
+  const hasApiKey = !!process.env.GOOGLE_AI_API_KEY;
+
+  if (!hasApiKey) {
+    return {
+      success: false,
+      error: {
+        message: 'AI service not configured',
+        code: 'API_KEY_MISSING',
+        retryable: false,
+        suggestTextInput: false,
+      },
+    };
+  }
+
+  try {
+    console.log('Identifying from description:', description);
+    const itemIdentity = await identifyItemFromDescription(description);
+    console.log('Text identification result:', itemIdentity.name);
+
+    // Generate market data from AI estimate
+    let marketData: MarketData;
+    if (itemIdentity.priceEstimate) {
+      marketData = generateMarketDataFromAIEstimate(itemIdentity.priceEstimate, itemIdentity.name);
+    } else {
+      marketData = await mockFetchMarketData(itemIdentity.searchQuery);
+    }
+
+    // Calculate V.E.S.T. score
+    const suggestedBuyPrice = Math.round(marketData.summary.medianSoldPrice * 0.4);
+    const vestScore = calculateVestScore(marketData, { buyPrice: suggestedBuyPrice });
+
+    return {
+      success: true,
+      data: {
+        itemIdentity,
+        marketData,
+        vestScore,
+      },
+    };
+  } catch (error) {
+    console.error('Text identification error:', error);
+
+    if (error instanceof GeminiError) {
+      return {
+        success: false,
+        error: {
+          message: error.message,
+          code: error.code,
+          retryable: error.retryable,
+          suggestTextInput: false,
+        },
+      };
+    }
+
+    return {
+      success: false,
+      error: {
+        message: 'Failed to analyze description. Please try again.',
+        code: 'UNKNOWN',
+        retryable: true,
+        suggestTextInput: false,
+      },
+    };
+  }
 }
 
 export async function recalculateVest(

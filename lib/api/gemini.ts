@@ -1,7 +1,7 @@
 'use server';
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { ItemIdentity, ConditionEstimate, AIPriceEstimate } from '@/lib/types';
+import { ItemIdentity, ConditionEstimate, AIPriceEstimate, GeminiError } from '@/lib/types';
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY || '');
 
@@ -48,11 +48,43 @@ Price estimation guidelines:
 - For common items, prices are usually lower due to competition
 
 Be specific with the search query - include brand, model, color, size if visible.
-For vintage items, include the era. For PNW brands from Washington/Oregon, set isPNWTreasure to true.`;
+For vintage items, include the era. For PNW brands from Washington/Oregon, set isPNWTreasure to true.
+
+IMPORTANT: If you cannot clearly identify the item from the image, still provide your best guess with a low confidence score (below 0.5). Only if the image is completely unreadable (e.g., completely dark, blurry beyond recognition, not showing any product) should you respond with a name of "Unidentifiable Item" and confidence of 0.`;
+
+const TEXT_IDENTIFICATION_PROMPT = `You are an expert reseller's assistant with deep knowledge of eBay market values. The user will describe an item they want to resell. Based on this description, provide market analysis.
+
+Return ONLY a valid JSON object with this exact structure (no markdown, no backticks, just the JSON):
+{
+  "name": "Full product name with brand and model based on description",
+  "brand": "Brand name",
+  "model": "Model number or name",
+  "category": "Category > Subcategory > Type",
+  "condition": "new|like-new|good|fair|poor",
+  "confidence": 0.0 to 1.0,
+  "searchQuery": "Optimized eBay search query",
+  "keywords": ["keyword1", "keyword2", "keyword3"],
+  "era": "Decade or 'Vintage' if applicable",
+  "isPNWTreasure": true if Pacific Northwest brand (Filson, Pendleton, Pacific Stoneware, etc),
+  "priceEstimate": {
+    "low": lowest realistic selling price in USD,
+    "mid": most likely selling price in USD,
+    "high": best-case selling price in USD,
+    "msrp": original retail price in USD if known (null if unknown or vintage/discontinued),
+    "confidence": 0.0 to 1.0 (how confident you are in this estimate),
+    "reasoning": "Brief explanation of price factors",
+    "demandLevel": "high|medium|low",
+    "redFlags": ["any concerns like reproduction, damage, missing parts"]
+  }
+}
+
+Since you're working from a description (not an image), assume "good" condition unless specified.
+Set confidence based on how specific the user's description is.
+Be realistic with price estimates based on typical eBay sold prices.`;
 
 export async function identifyItemWithGemini(imageBase64: string): Promise<ItemIdentity> {
   if (!process.env.GOOGLE_AI_API_KEY) {
-    throw new Error('GOOGLE_AI_API_KEY not configured');
+    throw new GeminiError('GOOGLE_AI_API_KEY not configured', 'API_KEY_MISSING', false);
   }
 
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
@@ -69,65 +101,141 @@ export async function identifyItemWithGemini(imageBase64: string): Promise<ItemI
     },
   };
 
-  const result = await model.generateContent([IDENTIFICATION_PROMPT, imagePart]);
-  const response = await result.response;
-  const text = response.text();
-
-  // Parse the JSON response
   try {
-    // Clean up the response - sometimes Gemini wraps in markdown code blocks
-    let jsonStr = text.trim();
-    if (jsonStr.startsWith('```json')) {
-      jsonStr = jsonStr.slice(7);
-    }
-    if (jsonStr.startsWith('```')) {
-      jsonStr = jsonStr.slice(3);
-    }
-    if (jsonStr.endsWith('```')) {
-      jsonStr = jsonStr.slice(0, -3);
-    }
-    jsonStr = jsonStr.trim();
+    const result = await model.generateContent([IDENTIFICATION_PROMPT, imagePart]);
+    const response = await result.response;
+    const text = response.text();
 
-    const parsed = JSON.parse(jsonStr);
-
-    // Validate and normalize the response
-    const validConditions: ConditionEstimate[] = ['new', 'like-new', 'good', 'fair', 'poor'];
-    const condition = validConditions.includes(parsed.condition)
-      ? parsed.condition
-      : 'good';
-
-    // Parse price estimate if provided
-    let priceEstimate: AIPriceEstimate | undefined;
-    if (parsed.priceEstimate) {
-      const pe = parsed.priceEstimate;
-      const validDemandLevels = ['high', 'medium', 'low'] as const;
-      priceEstimate = {
-        low: Math.max(0, Number(pe.low) || 0),
-        mid: Math.max(0, Number(pe.mid) || 0),
-        high: Math.max(0, Number(pe.high) || 0),
-        msrp: pe.msrp && Number(pe.msrp) > 0 ? Number(pe.msrp) : undefined,
-        confidence: Math.min(1, Math.max(0, Number(pe.confidence) || 0.5)),
-        reasoning: pe.reasoning || 'No reasoning provided',
-        demandLevel: validDemandLevels.includes(pe.demandLevel) ? pe.demandLevel : 'medium',
-        redFlags: Array.isArray(pe.redFlags) ? pe.redFlags : undefined,
-      };
+    return parseGeminiResponse(text);
+  } catch (error) {
+    if (error instanceof GeminiError) {
+      throw error;
     }
 
-    return {
-      name: parsed.name || 'Unknown Item',
-      brand: parsed.brand || 'Unknown',
-      model: parsed.model || '',
-      category: parsed.category || 'Other',
-      condition,
-      confidence: Math.min(1, Math.max(0, parsed.confidence || 0.7)),
-      searchQuery: parsed.searchQuery || parsed.name || 'item',
-      keywords: Array.isArray(parsed.keywords) ? parsed.keywords : [],
-      era: parsed.era,
-      isPNWTreasure: Boolean(parsed.isPNWTreasure),
-      priceEstimate,
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Gemini image identification error:', message);
+
+    // Handle specific error types
+    if (message.includes('quota') || message.includes('rate') || message.includes('429')) {
+      throw new GeminiError('Too many requests. Please wait a moment and try again.', 'RATE_LIMIT', true);
+    }
+    if (message.includes('network') || message.includes('fetch') || message.includes('ECONNREFUSED')) {
+      throw new GeminiError('Network error. Please check your connection.', 'NETWORK_ERROR', true);
+    }
+    if (message.includes('parse') || message.includes('JSON')) {
+      throw new GeminiError('Failed to understand the response. Please try again.', 'PARSE_ERROR', true);
+    }
+
+    throw new GeminiError(
+      'Failed to analyze image. Try taking a clearer photo or describe the item manually.',
+      'UNKNOWN',
+      true
+    );
+  }
+}
+
+// Helper function to parse Gemini response
+function parseGeminiResponse(text: string): ItemIdentity {
+  // Clean up the response - sometimes Gemini wraps in markdown code blocks
+  let jsonStr = text.trim();
+  if (jsonStr.startsWith('```json')) {
+    jsonStr = jsonStr.slice(7);
+  }
+  if (jsonStr.startsWith('```')) {
+    jsonStr = jsonStr.slice(3);
+  }
+  if (jsonStr.endsWith('```')) {
+    jsonStr = jsonStr.slice(0, -3);
+  }
+  jsonStr = jsonStr.trim();
+
+  const parsed = JSON.parse(jsonStr);
+
+  // Check for unidentifiable response
+  if (parsed.name === 'Unidentifiable Item' || parsed.confidence === 0) {
+    throw new GeminiError(
+      'Could not identify the item from the image. Try taking a clearer photo or describe it manually.',
+      'UNIDENTIFIABLE',
+      false
+    );
+  }
+
+  // Validate and normalize the response
+  const validConditions: ConditionEstimate[] = ['new', 'like-new', 'good', 'fair', 'poor'];
+  const condition = validConditions.includes(parsed.condition)
+    ? parsed.condition
+    : 'good';
+
+  // Parse price estimate if provided
+  let priceEstimate: AIPriceEstimate | undefined;
+  if (parsed.priceEstimate) {
+    const pe = parsed.priceEstimate;
+    const validDemandLevels = ['high', 'medium', 'low'] as const;
+    priceEstimate = {
+      low: Math.max(0, Number(pe.low) || 0),
+      mid: Math.max(0, Number(pe.mid) || 0),
+      high: Math.max(0, Number(pe.high) || 0),
+      msrp: pe.msrp && Number(pe.msrp) > 0 ? Number(pe.msrp) : undefined,
+      confidence: Math.min(1, Math.max(0, Number(pe.confidence) || 0.5)),
+      reasoning: pe.reasoning || 'No reasoning provided',
+      demandLevel: validDemandLevels.includes(pe.demandLevel) ? pe.demandLevel : 'medium',
+      redFlags: Array.isArray(pe.redFlags) ? pe.redFlags : undefined,
     };
-  } catch (parseError) {
-    console.error('Failed to parse Gemini response:', text);
-    throw new Error('Failed to parse item identification response');
+  }
+
+  return {
+    name: parsed.name || 'Unknown Item',
+    brand: parsed.brand || 'Unknown',
+    model: parsed.model || '',
+    category: parsed.category || 'Other',
+    condition,
+    confidence: Math.min(1, Math.max(0, parsed.confidence || 0.7)),
+    searchQuery: parsed.searchQuery || parsed.name || 'item',
+    keywords: Array.isArray(parsed.keywords) ? parsed.keywords : [],
+    era: parsed.era,
+    isPNWTreasure: Boolean(parsed.isPNWTreasure),
+    priceEstimate,
+  };
+}
+
+/**
+ * Identify an item using a text description instead of an image
+ */
+export async function identifyItemFromDescription(description: string): Promise<ItemIdentity> {
+  if (!process.env.GOOGLE_AI_API_KEY) {
+    throw new GeminiError('GOOGLE_AI_API_KEY not configured', 'API_KEY_MISSING', false);
+  }
+
+  if (!description || description.trim().length < 3) {
+    throw new GeminiError('Please provide a more detailed description', 'UNIDENTIFIABLE', false);
+  }
+
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+  try {
+    const result = await model.generateContent([
+      TEXT_IDENTIFICATION_PROMPT,
+      `User's item description: ${description.trim()}`
+    ]);
+    const response = await result.response;
+    const text = response.text();
+
+    return parseGeminiResponse(text);
+  } catch (error) {
+    if (error instanceof GeminiError) {
+      throw error;
+    }
+
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Gemini text identification error:', message);
+
+    if (message.includes('quota') || message.includes('rate')) {
+      throw new GeminiError('Too many requests. Please wait a moment and try again.', 'RATE_LIMIT', true);
+    }
+    if (message.includes('network') || message.includes('fetch')) {
+      throw new GeminiError('Network error. Please check your connection.', 'NETWORK_ERROR', true);
+    }
+
+    throw new GeminiError('Failed to analyze item description', 'UNKNOWN', true);
   }
 }

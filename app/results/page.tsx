@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ItemIdentity, MarketData, VestScore } from '@/lib/types';
 import { useVestCalculation } from '@/hooks/use-vest-calculation';
+import { identifyFromText } from '@/lib/actions/scan-item';
 import { Header } from '@/components/layout';
 import {
   ItemIdentification,
@@ -28,6 +29,7 @@ export default function ResultsPage() {
   const [scanData, setScanData] = useState<StoredScan | null>(null);
   const [buyPrice, setBuyPrice] = useState<number>(0);
   const [isSaved, setIsSaved] = useState(false);
+  const [isCorreecting, setIsCorreecting] = useState(false);
 
   // Load scan data from sessionStorage
   useEffect(() => {
@@ -109,6 +111,43 @@ export default function ResultsPage() {
     router.push('/');
   };
 
+  const handleCorrection = async (description: string) => {
+    if (!scanData) return;
+
+    setIsCorreecting(true);
+
+    const result = await identifyFromText(description);
+
+    if (result.success) {
+      // Update the scan data with new identification
+      const newScanData: StoredScan = {
+        ...scanData,
+        itemIdentity: result.data.itemIdentity,
+        marketData: result.data.marketData,
+        vestScore: result.data.vestScore,
+      };
+
+      // Update session storage
+      sessionStorage.setItem('currentScan', JSON.stringify(newScanData));
+
+      // Update state
+      setScanData(newScanData);
+      setBuyPrice(Math.round(result.data.marketData.summary.medianSoldPrice * 0.4));
+      setIsSaved(false); // Reset saved state since data changed
+
+      // Haptic feedback
+      if ('vibrate' in navigator) {
+        navigator.vibrate(50);
+      }
+    } else {
+      // Show error (could use a toast here)
+      console.error('Correction failed:', result.error);
+      alert(result.error.message);
+    }
+
+    setIsCorreecting(false);
+  };
+
   if (!scanData) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -126,6 +165,8 @@ export default function ResultsPage() {
         <ItemIdentification
           item={scanData.itemIdentity}
           imageBase64={scanData.imageBase64}
+          onCorrect={handleCorrection}
+          isCorreecting={isCorreecting}
         />
 
         {/* V.E.S.T. score display */}
