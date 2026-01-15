@@ -75,14 +75,19 @@ export function CompsGallery({
     <Card className="bg-card border-border">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-base font-medium">
-            Comparable Listings ({activeListings.length})
-            {excludedCount > 0 && (
-              <span className="text-muted-foreground font-normal ml-2">
-                ({excludedCount} excluded)
-              </span>
-            )}
-          </CardTitle>
+          <div>
+            <CardTitle className="text-base font-medium">
+              eBay Listings
+              {excludedCount > 0 && (
+                <span className="text-muted-foreground font-normal ml-2">
+                  ({excludedCount} excluded)
+                </span>
+              )}
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {activeListings.length} current asking prices
+            </p>
+          </div>
           <a
             href={ebaySearchUrl}
             target="_blank"

@@ -49,14 +49,25 @@ export function ProfitHero({
       <CardContent className="p-0">
         {/* Main profit display */}
         <div className="p-6 text-center">
-          <p className="text-sm text-muted-foreground uppercase tracking-wide mb-2">
-            Net Profit
-          </p>
+          {/* Expected Sale Price - prominent */}
+          <div className="mb-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
+              Sells For
+            </p>
+            <p className="text-3xl font-bold font-mono tabular-nums text-foreground">
+              ${profitBreakdown.expectedSalePrice.toFixed(0)}
+            </p>
+          </div>
+
+          {/* Net Profit */}
           <button
             onClick={() => setShowBreakdown(!showBreakdown)}
-            className="group"
+            className="group w-full"
           >
-            <p className={cn('text-5xl font-bold font-mono tabular-nums', profitColor, profitGlow)}>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
+              Your Profit
+            </p>
+            <p className={cn('text-4xl font-bold font-mono tabular-nums', profitColor, profitGlow)}>
               {isPositive ? '+' : '-'}${animatedProfit.toFixed(2)}
             </p>
             <p className="text-xs text-muted-foreground mt-1 flex items-center justify-center gap-1">

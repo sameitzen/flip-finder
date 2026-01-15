@@ -3,10 +3,9 @@
 import { useState } from 'react';
 import { ItemIdentity } from '@/lib/types';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sparkles, MapPin, Edit3, Send, X, Loader2 } from 'lucide-react';
+import { Edit3, Send, X, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ItemIdentificationProps {
@@ -35,7 +34,6 @@ export function ItemIdentification({
 
   // Display up to 4 images in a clean grid
   const displayImages = images.slice(0, 4);
-  const hasMultipleImages = displayImages.length > 1;
 
   return (
     <Card className="border-border/50 bg-card/50 overflow-hidden">
@@ -53,9 +51,7 @@ export function ItemIdentification({
                 key={idx}
                 className={cn(
                   'rounded-lg overflow-hidden bg-muted',
-                  // First image larger when there are 3+ images
                   displayImages.length >= 3 && idx === 0 && 'col-span-2 aspect-video',
-                  // Other images are square
                   !(displayImages.length >= 3 && idx === 0) && 'aspect-square'
                 )}
               >
@@ -78,51 +74,48 @@ export function ItemIdentification({
             {item.category}
           </p>
 
-          {/* Badges */}
-          <div className="flex flex-wrap gap-1.5 mt-3">
-            <Badge variant="secondary" className="text-xs">
-              <Sparkles className="w-3 h-3 mr-1" />
+          {/* Pill tags */}
+          <div className="flex flex-wrap gap-2 mt-3">
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
               {confidencePercent}% match
-            </Badge>
+            </span>
 
             {item.condition && (
-              <Badge variant="outline" className="text-xs capitalize">
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-muted text-foreground capitalize">
                 {item.condition}
-              </Badge>
+              </span>
             )}
 
             {item.isPNWTreasure && (
-              <Badge className="text-xs bg-vest-buy/20 text-vest-buy border-vest-buy/50">
-                <MapPin className="w-3 h-3 mr-1" />
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-500">
                 PNW Treasure
-              </Badge>
+              </span>
             )}
 
             {item.era && (
-              <Badge variant="outline" className="text-xs">
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground">
                 {item.era}
-              </Badge>
+              </span>
             )}
           </div>
 
-          {/* Wrong identification CTA - more prominent */}
+          {/* Wrong identification CTA - prominent button */}
           {onCorrect && !showCorrectInput && (
             <Button
               onClick={() => setShowCorrectInput(true)}
               disabled={isCorreecting}
-              variant="outline"
-              size="sm"
-              className="mt-4 w-full gap-2 border-dashed"
+              variant="secondary"
+              className="mt-4 w-full"
             >
-              <Edit3 className="w-4 h-4" />
-              Wrong item? Tell us what it is
+              <Edit3 className="w-4 h-4 mr-2" />
+              Not the right item? Fix it
             </Button>
           )}
 
           {/* Correction input */}
           {showCorrectInput && (
-            <div className="mt-4 space-y-2">
-              <p className="text-sm text-muted-foreground">
+            <div className="mt-4 p-3 bg-muted/50 rounded-lg space-y-3">
+              <p className="text-sm font-medium">
                 What is this item?
               </p>
               <div className="flex gap-2">
