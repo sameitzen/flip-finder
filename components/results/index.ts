@@ -4,3 +4,6 @@ export { ProfitSlider } from './profit-slider';
 export { MarketDataPanel } from './market-data-panel';
 export { ItemIdentification } from './item-identification';
 export { AIInsightsPanel } from './ai-insights-panel';
+export { ProfitHero } from './profit-hero';
+export { CompsGallery } from './comps-gallery';
+export { AISignals } from './ai-signals';

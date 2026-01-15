@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { ItemIdentity, MarketData, VestScore } from '@/lib/types';
 import { useVestCalculation } from '@/hooks/use-vest-calculation';
@@ -8,17 +8,23 @@ import { identifyFromText, scanItem } from '@/lib/actions/scan-item';
 import { Header } from '@/components/layout';
 import {
   ItemIdentification,
-  VestScoreDisplay,
   ProfitSlider,
   MarketDataPanel,
-  AIInsightsPanel,
+  ProfitHero,
+  CompsGallery,
+  AISignals,
 } from '@/components/results';
 import { Button } from '@/components/ui/button';
 import { Save, RotateCcw } from 'lucide-react';
+import { SearchMetadata } from '@/lib/api/ebay';
+
+interface ExtendedMarketData extends MarketData {
+  searchMeta?: SearchMetadata;
+}
 
 interface StoredScan {
   itemIdentity: ItemIdentity;
-  marketData: MarketData;
+  marketData: ExtendedMarketData;
   vestScore: VestScore;
   imageBase64: string;
   images?: string[]; // Support multiple images
@@ -32,6 +38,7 @@ export default function ResultsPage() {
   const [isSaved, setIsSaved] = useState(false);
   const [isCorreecting, setIsCorreecting] = useState(false);
   const [isRefining, setIsRefining] = useState(false);
+  const [excludedListings, setExcludedListings] = useState<Set<number>>(new Set());
 
   // Load scan data from sessionStorage
   useEffect(() => {
@@ -188,6 +195,15 @@ export default function ResultsPage() {
     setIsRefining(false);
   };
 
+  // Handle excluding a listing from comps
+  const handleExcludeListing = useCallback((index: number, _reason: string) => {
+    setExcludedListings(prev => {
+      const next = new Set(prev);
+      next.add(index);
+      return next;
+    });
+  }, []);
+
   if (!scanData) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -195,6 +211,23 @@ export default function ResultsPage() {
       </div>
     );
   }
+
+  // Get extended vest score with profit breakdown
+  const extendedVestScore = vestScore as typeof vestScore & {
+    profitBreakdown?: {
+      expectedSalePrice: number;
+      ebayFinalValueFee: number;
+      paymentProcessingFee: number;
+      shippingCost: number;
+      promotedListingFee: number;
+      totalPlatformCosts: number;
+      buyPrice: number;
+      netProfit: number;
+      roi: number;
+      effectiveMargin: number;
+    };
+    overrideExplanation?: string | null;
+  };
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -211,8 +244,27 @@ export default function ResultsPage() {
           isRefining={isRefining}
         />
 
-        {/* V.E.S.T. score display */}
-        <VestScoreDisplay vestScore={vestScore} />
+        {/* NEW: Profit Hero - Net profit as the main focus */}
+        <ProfitHero
+          netProfit={vestScore.estimatedProfit}
+          roi={vestScore.roi}
+          daysToSell={scanData.marketData.summary.avgDaysToSell}
+          grade={vestScore.grade}
+          recommendation={vestScore.recommendation}
+          profitBreakdown={extendedVestScore.profitBreakdown || {
+            expectedSalePrice: scanData.marketData.summary.medianSoldPrice,
+            ebayFinalValueFee: scanData.marketData.summary.medianSoldPrice * 0.129,
+            paymentProcessingFee: (scanData.marketData.summary.medianSoldPrice * 0.029) + 0.30,
+            shippingCost: 8,
+            promotedListingFee: 0,
+            totalPlatformCosts: 0,
+            buyPrice: buyPrice,
+            netProfit: vestScore.estimatedProfit,
+            roi: vestScore.roi,
+            effectiveMargin: 0,
+          }}
+          gradeOverrideExplanation={extendedVestScore.overrideExplanation}
+        />
 
         {/* Profit slider */}
         <ProfitSlider
@@ -223,13 +275,31 @@ export default function ResultsPage() {
           roi={vestScore.roi}
         />
 
+        {/* NEW: Comps Gallery - Show actual eBay listings */}
+        {scanData.marketData.activeListings.length > 0 && (
+          <CompsGallery
+            listings={scanData.marketData.activeListings}
+            originalQuery={scanData.itemIdentity.searchQuery}
+            usedQuery={scanData.marketData.searchMeta?.usedQuery}
+            queryBroadened={scanData.marketData.searchMeta?.queryBroadened}
+            broadeningExplanation={scanData.marketData.searchMeta?.broadeningExplanation}
+            onExclude={handleExcludeListing}
+            excludedIndices={excludedListings}
+          />
+        )}
+
+        {/* NEW: AI Signals - Structured bullet points */}
+        {scanData.itemIdentity.priceEstimate && (
+          <AISignals
+            reasoning={scanData.itemIdentity.priceEstimate.reasoning}
+            demandLevel={scanData.itemIdentity.priceEstimate.demandLevel}
+            redFlags={scanData.itemIdentity.priceEstimate.redFlags}
+            confidence={scanData.itemIdentity.priceEstimate.confidence}
+          />
+        )}
+
         {/* Market data */}
         <MarketDataPanel summary={scanData.marketData.summary} />
-
-        {/* AI Insights - only show if we have price estimate data */}
-        {scanData.itemIdentity.priceEstimate && (
-          <AIInsightsPanel priceEstimate={scanData.itemIdentity.priceEstimate} />
-        )}
 
         {/* Action buttons */}
         <div className="flex gap-3 pt-2">

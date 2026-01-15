@@ -1,9 +1,11 @@
 'use server';
 
 import { MarketData, SoldListing, ActiveListing, MarketSummary } from '@/lib/types';
+import { broadenQuery, getBroadeningExplanation } from '@/lib/utils/keyword-broadener';
 
 const EBAY_API_BASE = 'https://api.ebay.com';
 const EBAY_TIMEOUT_MS = 10000; // 10 second timeout for eBay calls
+const MIN_RESULTS_FOR_CONFIDENCE = 3; // Minimum results before trying broader query
 
 // Triangulated price result type
 export interface TriangulatedPrice {
@@ -15,6 +17,15 @@ export interface TriangulatedPrice {
   reasoning: string;
   marketInsight: string;
   recommendation: 'buy' | 'maybe' | 'pass';
+}
+
+// Search metadata for transparency
+export interface SearchMetadata {
+  originalQuery: string;
+  usedQuery: string;
+  tier: 1 | 2 | 3;
+  queryBroadened: boolean;
+  broadeningExplanation: string | null;
 }
 
 // Timeout helper
@@ -92,20 +103,15 @@ interface EbaySearchResponse {
 }
 
 /**
- * Search for sold/completed listings on eBay
- * Note: Browse API doesn't directly support sold listings filter,
- * so we search active listings and use AI estimates for sold data
+ * Execute a single eBay search query
  */
-export async function searchEbayListings(
-  searchQuery: string,
-  options: { limit?: number } = {}
+async function executeEbaySearch(
+  token: string,
+  query: string,
+  limit: number
 ): Promise<{ active: ActiveListing[]; totalActive: number }> {
-  const token = await getEbayToken();
-  const limit = options.limit || 50;
-
-  // Search active listings
   const searchParams = new URLSearchParams({
-    q: searchQuery,
+    q: query,
     limit: limit.toString(),
     sort: 'price',
   });
@@ -146,6 +152,94 @@ export async function searchEbayListings(
     active: activeListings,
     totalActive: data.total || activeListings.length,
   };
+}
+
+/**
+ * Search for listings on eBay with progressive query broadening
+ * If initial query returns too few results, automatically tries broader queries
+ */
+export async function searchEbayListings(
+  searchQuery: string,
+  options: { limit?: number } = {}
+): Promise<{ active: ActiveListing[]; totalActive: number; searchMeta: SearchMetadata }> {
+  const token = await getEbayToken();
+  const limit = options.limit || 50;
+
+  // Get progressively broader queries
+  const queries = broadenQuery(searchQuery);
+
+  // Try each query tier until we get enough results
+  for (const { query, tier, strippedTerms } of queries) {
+    try {
+      const result = await executeEbaySearch(token, query, limit);
+
+      // If we have enough results, use this query
+      if (result.active.length >= MIN_RESULTS_FOR_CONFIDENCE) {
+        const broadeningExplanation = getBroadeningExplanation(
+          searchQuery,
+          query,
+          tier,
+          strippedTerms
+        );
+
+        console.log(`eBay search: Tier ${tier} query returned ${result.active.length} results`);
+        if (tier > 1) {
+          console.log(`Query broadened: "${searchQuery}" → "${query}"`);
+        }
+
+        return {
+          ...result,
+          searchMeta: {
+            originalQuery: searchQuery,
+            usedQuery: query,
+            tier,
+            queryBroadened: tier > 1,
+            broadeningExplanation,
+          },
+        };
+      }
+
+      console.log(`eBay search: Tier ${tier} returned only ${result.active.length} results, trying broader query...`);
+    } catch (error) {
+      console.error(`eBay search error on tier ${tier}:`, error);
+      // Continue to next tier
+    }
+  }
+
+  // If all tiers fail or return insufficient results, use the last tier's results
+  const lastQuery = queries[queries.length - 1];
+  try {
+    const result = await executeEbaySearch(token, lastQuery.query, limit);
+
+    return {
+      ...result,
+      searchMeta: {
+        originalQuery: searchQuery,
+        usedQuery: lastQuery.query,
+        tier: lastQuery.tier,
+        queryBroadened: lastQuery.tier > 1,
+        broadeningExplanation: getBroadeningExplanation(
+          searchQuery,
+          lastQuery.query,
+          lastQuery.tier,
+          lastQuery.strippedTerms
+        ),
+      },
+    };
+  } catch {
+    // Return empty results if everything fails
+    return {
+      active: [],
+      totalActive: 0,
+      searchMeta: {
+        originalQuery: searchQuery,
+        usedQuery: lastQuery.query,
+        tier: lastQuery.tier,
+        queryBroadened: true,
+        broadeningExplanation: 'Search failed - no results available',
+      },
+    };
+  }
 }
 
 /**
@@ -225,10 +319,15 @@ export async function fetchEbayMarketData(
   searchQuery: string,
   _itemName: string, // Kept for API compatibility, not currently used
   aiEstimate?: { low: number; mid: number; high: number }
-): Promise<MarketData & { triangulation?: TriangulatedPrice }> {
+): Promise<MarketData & { triangulation?: TriangulatedPrice; searchMeta?: SearchMetadata }> {
   try {
     console.log('Fetching eBay data for:', searchQuery);
-    const { active, totalActive } = await searchEbayListings(searchQuery, { limit: 50 });
+    const { active, totalActive, searchMeta } = await searchEbayListings(searchQuery, { limit: 50 });
+
+    // Log search metadata for transparency
+    if (searchMeta.queryBroadened) {
+      console.log('Search query was broadened:', searchMeta.broadeningExplanation);
+    }
 
     // Calculate real eBay listing stats
     const activePrices = active.map(l => l.currentPrice).filter(p => p > 0);
@@ -324,6 +423,7 @@ export async function fetchEbayMarketData(
       activeListings: active,
       summary,
       triangulation: triangulatedPrices,
+      searchMeta,
     };
   } catch (error) {
     console.error('Error fetching eBay market data:', error);

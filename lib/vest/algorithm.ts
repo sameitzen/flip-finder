@@ -1,32 +1,63 @@
-import { MarketData, VestScore, VestInput } from '@/lib/types';
+import { MarketData, VestScore, VestInput, Grade } from '@/lib/types';
 import { calculateVelocity } from './velocity';
 import { calculateEquity } from './equity';
 import { calculateStability } from './stability';
 import { calculateTrend } from './trend';
 import { scoreToGrade, scoreToRecommendation } from './grade';
+import { applyGradeOverride, getOverrideExplanation, OverrideResult } from './grade-override';
+import { calculateNetProfit, ProfitBreakdown } from '@/lib/utils/profit-calculator';
+
+export interface ExtendedVestScore extends VestScore {
+  profitBreakdown: ProfitBreakdown;
+  gradeOverride: OverrideResult | null;
+  overrideExplanation: string | null;
+}
 
 export function calculateVestScore(
   market: MarketData,
   input: VestInput
-): VestScore {
-  const { buyPrice, estimatedFees = 0.13, shippingCost = 5 } = input;
+): ExtendedVestScore {
+  const { buyPrice, shippingCost = 5 } = input;
 
   const velocity = calculateVelocity(market.summary);
   const equityResult = calculateEquity(market.summary, {
     buyPrice,
-    estimatedFees,
     shippingCost,
   });
   const stability = calculateStability(market.summary);
   const trend = calculateTrend(market.summary);
 
-  const total = velocity.weighted + equityResult.weighted + stability.weighted + trend.weighted;
-  const grade = scoreToGrade(total);
-  const recommendation = scoreToRecommendation(total);
+  // Calculate true net profit with full fee breakdown
+  const profitBreakdown = calculateNetProfit({
+    expectedSalePrice: market.summary.medianSoldPrice,
+    buyPrice,
+    shippingCost,
+  });
+
+  const rawTotal = velocity.weighted + equityResult.weighted + stability.weighted + trend.weighted;
+  const rawGrade = scoreToGrade(rawTotal);
+
+  // Apply grade override rules (velocity/margin/market overrides)
+  const overrideInput = {
+    score: rawTotal,
+    grade: rawGrade,
+    daysToSell: market.summary.avgDaysToSell,
+    netProfit: profitBreakdown.netProfit,
+    grossMargin: profitBreakdown.effectiveMargin / 100,
+    sellThroughRate: market.summary.sellThroughRate,
+  };
+
+  const gradeOverride = applyGradeOverride(overrideInput);
+  const overrideExplanation = getOverrideExplanation(gradeOverride);
+
+  // Use overridden grade and score if applicable
+  const finalScore = gradeOverride.finalScore;
+  const finalGrade = gradeOverride.finalGrade;
+  const recommendation = scoreToRecommendation(finalScore);
 
   return {
-    total: Math.round(total * 10) / 10,
-    grade,
+    total: Math.round(finalScore * 10) / 10,
+    grade: finalGrade,
     components: {
       velocity,
       equity: equityResult,
@@ -34,8 +65,11 @@ export function calculateVestScore(
       trend,
     },
     recommendation,
-    estimatedProfit: equityResult.netProfit,
-    roi: equityResult.roi,
+    estimatedProfit: profitBreakdown.netProfit,
+    roi: profitBreakdown.roi,
+    profitBreakdown,
+    gradeOverride: gradeOverride.overrideApplied ? gradeOverride : null,
+    overrideExplanation,
   };
 }
 
