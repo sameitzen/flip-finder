@@ -64,8 +64,8 @@ async function getEbayToken(): Promise<string> {
 
   if (!response.ok) {
     const error = await response.text();
-    console.error('eBay OAuth error:', error);
-    throw new Error('Failed to authenticate with eBay API');
+    console.error('eBay OAuth error:', response.status, error);
+    throw new Error(`eBay OAuth failed: ${response.status} - ${error.substring(0, 200)}`);
   }
 
   const data = await response.json();
