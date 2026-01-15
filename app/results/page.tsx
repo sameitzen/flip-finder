@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ItemIdentity, MarketData, VestScore } from '@/lib/types';
 import { useVestCalculation } from '@/hooks/use-vest-calculation';
@@ -37,7 +37,6 @@ export default function ResultsPage() {
   const [buyPrice, setBuyPrice] = useState<number>(0);
   const [isSaved, setIsSaved] = useState(false);
   const [isCorreecting, setIsCorreecting] = useState(false);
-  const [excludedListings, setExcludedListings] = useState<Set<number>>(new Set());
 
   // Load scan data from sessionStorage
   useEffect(() => {
@@ -156,15 +155,6 @@ export default function ResultsPage() {
     setIsCorreecting(false);
   };
 
-  // Handle excluding a listing from comps
-  const handleExcludeListing = useCallback((index: number, _reason: string) => {
-    setExcludedListings(prev => {
-      const next = new Set(prev);
-      next.add(index);
-      return next;
-    });
-  }, []);
-
   if (!scanData) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -239,8 +229,6 @@ export default function ResultsPage() {
           <CompsGallery
             listings={scanData.marketData.activeListings}
             originalQuery={scanData.itemIdentity.searchQuery}
-            onExclude={handleExcludeListing}
-            excludedIndices={excludedListings}
           />
         )}
 
