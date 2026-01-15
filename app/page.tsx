@@ -31,17 +31,26 @@ export default function Home() {
   const [error, setError] = useState<ScanError | null>(null);
   const [showTextInput, setShowTextInput] = useState(false);
   const [textDescription, setTextDescription] = useState('');
-  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [capturedPhotos, setCapturedPhotos] = useState<string[]>([]);
 
-  const handleCapture = async (imageBase64: string) => {
+  const handleAddPhoto = (imageBase64: string) => {
+    setCapturedPhotos(prev => [...prev, imageBase64]);
+  };
+
+  const handleRemovePhoto = (index: number) => {
+    setCapturedPhotos(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleAnalyze = async (images: string[]) => {
+    if (images.length === 0) return;
+
     setIsProcessing(true);
     setError(null);
-    setCapturedImage(imageBase64);
 
     try {
-      // Wrap the scan with a client-side timeout
+      // Send all images for analysis
       const result = await withClientTimeout(
-        scanItem(imageBase64),
+        scanItem(images),
         SCAN_TIMEOUT_MS,
         'Request took too long. Please try again.'
       );
@@ -50,7 +59,8 @@ export default function Home() {
         // Store result in sessionStorage for the results page
         sessionStorage.setItem('currentScan', JSON.stringify({
           ...result.data,
-          imageBase64,
+          imageBase64: images[0], // Primary image
+          images, // All images
           timestamp: Date.now(),
         }));
 
@@ -83,7 +93,7 @@ export default function Home() {
     setError(null);
     setShowTextInput(false);
     setTextDescription('');
-    setCapturedImage(null);
+    setCapturedPhotos([]);
   };
 
   const handleTextSubmit = async () => {
@@ -102,7 +112,8 @@ export default function Home() {
       if (result.success) {
         sessionStorage.setItem('currentScan', JSON.stringify({
           ...result.data,
-          imageBase64: capturedImage || '',
+          imageBase64: capturedPhotos[0] || '',
+          images: capturedPhotos,
           timestamp: Date.now(),
         }));
 
@@ -132,8 +143,11 @@ export default function Home() {
   return (
     <main className="flex-1 flex flex-col h-full min-h-0 relative">
       <CameraViewfinder
-        onCapture={handleCapture}
+        onAnalyze={handleAnalyze}
         isProcessing={isProcessing}
+        capturedPhotos={capturedPhotos}
+        onAddPhoto={handleAddPhoto}
+        onRemovePhoto={handleRemovePhoto}
       />
 
       {/* Error overlay */}

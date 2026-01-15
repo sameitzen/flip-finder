@@ -3,14 +3,20 @@
 import { useEffect, useRef } from 'react';
 import { useCamera } from '@/hooks/use-camera';
 import { CaptureButton } from './capture-button';
+import { PhotoTray } from './photo-tray';
 import { CameraPermissions } from './camera-permissions';
 import { Camera, RefreshCw, Image as ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
+const MAX_PHOTOS = 4;
+
 interface CameraViewfinderProps {
-  onCapture: (imageBase64: string) => void;
+  onAnalyze: (images: string[]) => void;
   isProcessing?: boolean;
+  capturedPhotos: string[];
+  onAddPhoto: (imageBase64: string) => void;
+  onRemovePhoto: (index: number) => void;
 }
 
 const fileToBase64 = (file: File): Promise<string> => {
@@ -22,7 +28,13 @@ const fileToBase64 = (file: File): Promise<string> => {
   });
 };
 
-export function CameraViewfinder({ onCapture, isProcessing = false }: CameraViewfinderProps) {
+export function CameraViewfinder({
+  onAnalyze,
+  isProcessing = false,
+  capturedPhotos,
+  onAddPhoto,
+  onRemovePhoto,
+}: CameraViewfinderProps) {
   const {
     videoRef,
     canvasRef,
@@ -42,10 +54,13 @@ export function CameraViewfinder({ onCapture, isProcessing = false }: CameraView
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const file = files[0];
-    if (file.type.startsWith('image/')) {
-      const base64 = await fileToBase64(file);
-      onCapture(base64);
+    // Handle multiple file selection
+    for (let i = 0; i < Math.min(files.length, MAX_PHOTOS - capturedPhotos.length); i++) {
+      const file = files[i];
+      if (file.type.startsWith('image/')) {
+        const base64 = await fileToBase64(file);
+        onAddPhoto(base64);
+      }
     }
 
     // Reset input
@@ -68,10 +83,22 @@ export function CameraViewfinder({ onCapture, isProcessing = false }: CameraView
   }, []);
 
   const handleCapture = () => {
+    if (capturedPhotos.length >= MAX_PHOTOS) return;
+
     const image = captureImage();
     if (image) {
-      onCapture(image);
+      onAddPhoto(image);
+
+      // Haptic feedback
+      if ('vibrate' in navigator) {
+        navigator.vibrate(50);
+      }
     }
+  };
+
+  const handleAnalyze = () => {
+    if (capturedPhotos.length === 0) return;
+    onAnalyze(capturedPhotos);
   };
 
   // Show permission request UI
@@ -84,6 +111,9 @@ export function CameraViewfinder({ onCapture, isProcessing = false }: CameraView
       />
     );
   }
+
+  const canCapture = status === 'active' && capturedPhotos.length < MAX_PHOTOS && !isProcessing;
+  const canAnalyze = capturedPhotos.length > 0 && !isProcessing;
 
   return (
     <div className="relative flex flex-col flex-1 bg-black">
@@ -148,8 +178,8 @@ export function CameraViewfinder({ onCapture, isProcessing = false }: CameraView
             </div>
           )}
 
-          {/* Targeting reticle - only when not processing */}
-          {status === 'active' && !isProcessing && (
+          {/* Targeting reticle - only when not processing and no photos yet */}
+          {status === 'active' && !isProcessing && capturedPhotos.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="w-56 h-56 relative">
                 {/* Corner accents */}
@@ -174,12 +204,13 @@ export function CameraViewfinder({ onCapture, isProcessing = false }: CameraView
           )}
 
           {/* Gallery upload button */}
-          {status === 'active' && !isProcessing && (
+          {status === 'active' && !isProcessing && capturedPhotos.length < MAX_PHOTOS && (
             <>
               <input
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
+                multiple
                 onChange={handleFileSelect}
                 className="hidden"
               />
@@ -193,15 +224,30 @@ export function CameraViewfinder({ onCapture, isProcessing = false }: CameraView
               </Button>
             </>
           )}
+
+          {/* Photo tray - shows captured photos */}
+          {capturedPhotos.length > 0 && !isProcessing && (
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2">
+              <PhotoTray
+                photos={capturedPhotos}
+                onRemove={onRemovePhoto}
+                maxPhotos={MAX_PHOTOS}
+              />
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Capture button area - integrated with processing state */}
+      {/* Capture/Analyze button area */}
       <div className="flex-shrink-0 py-4 px-4">
         <CaptureButton
           onCapture={handleCapture}
-          disabled={status !== 'active'}
+          onAnalyze={handleAnalyze}
+          disabled={!canCapture && !canAnalyze}
           isProcessing={isProcessing}
+          hasPhotos={capturedPhotos.length > 0}
+          photoCount={capturedPhotos.length}
+          maxPhotos={MAX_PHOTOS}
         />
       </div>
     </div>
