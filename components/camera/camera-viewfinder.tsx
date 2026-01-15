@@ -434,7 +434,7 @@ export function CameraViewfinder({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/jpeg,image/png,image/gif,image/webp"
+                accept="image/*"
                 multiple
                 onChange={handleFileSelect}
                 className="hidden"
