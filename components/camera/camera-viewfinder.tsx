@@ -6,6 +6,7 @@ import { CaptureButton } from './capture-button';
 import { CameraPermissions } from './camera-permissions';
 import { Camera, RefreshCw, Image as ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 interface CameraViewfinderProps {
   onCapture: (imageBase64: string) => void;
@@ -86,101 +87,120 @@ export function CameraViewfinder({ onCapture, isProcessing = false }: CameraView
 
   return (
     <div className="relative flex flex-col flex-1 bg-black">
-      {/* Video feed - takes remaining space */}
-      <div className="relative flex-1 overflow-hidden bg-black">
-        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          webkit-playsinline="true"
-          className="absolute inset-0 w-full h-full object-cover"
-          style={{
-            transform: facingMode === 'user' ? 'scaleX(-1)' : 'none',
-            minHeight: '100%',
-            minWidth: '100%',
-          }}
-        />
+      {/* Video feed container with border */}
+      <div className="relative flex-1 overflow-hidden m-3 rounded-2xl">
+        {/* Outer glow border */}
+        <div className={cn(
+          'absolute inset-0 rounded-2xl transition-all duration-500',
+          isProcessing
+            ? 'ring-2 ring-primary/50 shadow-[0_0_30px_rgba(74,222,128,0.3)]'
+            : 'ring-1 ring-white/20'
+        )} />
 
-        {/* Hidden canvas for capture */}
-        <canvas ref={canvasRef} className="hidden" />
+        {/* Inner border */}
+        <div className="absolute inset-[1px] rounded-2xl overflow-hidden bg-black">
+          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            webkit-playsinline="true"
+            className={cn(
+              'absolute inset-0 w-full h-full object-cover transition-all duration-300',
+              isProcessing && 'brightness-75'
+            )}
+            style={{
+              transform: facingMode === 'user' ? 'scaleX(-1)' : 'none',
+              minHeight: '100%',
+              minWidth: '100%',
+            }}
+          />
 
-        {/* Loading overlay */}
-        {(status === 'idle' || status === 'requesting') && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background">
-            <div className="flex flex-col items-center gap-3">
-              <Camera className="w-12 h-12 text-muted-foreground animate-pulse" />
-              <p className="text-sm text-muted-foreground">
-                {status === 'requesting' ? 'Requesting camera access...' : 'Starting camera...'}
-              </p>
+          {/* Hidden canvas for capture */}
+          <canvas ref={canvasRef} className="hidden" />
+
+          {/* Loading state - waiting for camera */}
+          {(status === 'idle' || status === 'requesting') && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background">
+              <div className="flex flex-col items-center gap-3">
+                <Camera className="w-12 h-12 text-muted-foreground animate-pulse" />
+                <p className="text-sm text-muted-foreground">
+                  {status === 'requesting' ? 'Requesting camera access...' : 'Starting camera...'}
+                </p>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Processing overlay */}
-        {isProcessing && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
-              <p className="text-sm text-muted-foreground">Analyzing item...</p>
+          {/* Scanning indicator overlay - subtle, keeps video visible */}
+          {isProcessing && (
+            <div className="absolute inset-0 pointer-events-none">
+              {/* Scanning line animation */}
+              <div className="absolute inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent animate-scan-line" />
+
+              {/* Corner brackets that pulse */}
+              <div className="absolute inset-4">
+                <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-primary rounded-tl-lg animate-pulse" />
+                <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-primary rounded-tr-lg animate-pulse" />
+                <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-primary rounded-bl-lg animate-pulse" />
+                <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-primary rounded-br-lg animate-pulse" />
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Targeting reticle */}
-        {status === 'active' && !isProcessing && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-64 h-64 border-2 border-white/50 rounded-lg">
-              {/* Corner accents */}
-              <div className="absolute -top-0.5 -left-0.5 w-6 h-6 border-t-2 border-l-2 border-white rounded-tl-lg" />
-              <div className="absolute -top-0.5 -right-0.5 w-6 h-6 border-t-2 border-r-2 border-white rounded-tr-lg" />
-              <div className="absolute -bottom-0.5 -left-0.5 w-6 h-6 border-b-2 border-l-2 border-white rounded-bl-lg" />
-              <div className="absolute -bottom-0.5 -right-0.5 w-6 h-6 border-b-2 border-r-2 border-white rounded-br-lg" />
+          {/* Targeting reticle - only when not processing */}
+          {status === 'active' && !isProcessing && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="w-56 h-56 relative">
+                {/* Corner accents */}
+                <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-white/60 rounded-tl-lg" />
+                <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-white/60 rounded-tr-lg" />
+                <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-white/60 rounded-bl-lg" />
+                <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-white/60 rounded-br-lg" />
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Camera switch button */}
-        {status === 'active' && !isProcessing && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={switchCamera}
-            className="absolute top-4 right-4 bg-black/30 hover:bg-black/50 text-white rounded-full"
-          >
-            <RefreshCw className="w-5 h-5" />
-          </Button>
-        )}
-
-        {/* Gallery upload button */}
-        {status === 'active' && !isProcessing && (
-          <>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
+          {/* Camera switch button */}
+          {status === 'active' && !isProcessing && (
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => fileInputRef.current?.click()}
-              className="absolute bottom-4 left-4 bg-black/30 hover:bg-black/50 text-white rounded-full"
+              onClick={switchCamera}
+              className="absolute top-3 right-3 bg-black/40 hover:bg-black/60 text-white rounded-full backdrop-blur-sm"
             >
-              <ImageIcon className="w-5 h-5" />
+              <RefreshCw className="w-5 h-5" />
             </Button>
-          </>
-        )}
+          )}
 
+          {/* Gallery upload button */}
+          {status === 'active' && !isProcessing && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute bottom-3 left-3 bg-black/40 hover:bg-black/60 text-white rounded-full backdrop-blur-sm"
+              >
+                <ImageIcon className="w-5 h-5" />
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
-      {/* Capture button - compact for mobile */}
-      <div className="flex-shrink-0 py-2 px-4 bg-gradient-to-t from-background to-transparent">
+      {/* Capture button area - integrated with processing state */}
+      <div className="flex-shrink-0 py-4 px-4">
         <CaptureButton
           onCapture={handleCapture}
-          disabled={status !== 'active' || isProcessing}
+          disabled={status !== 'active'}
           isProcessing={isProcessing}
         />
       </div>

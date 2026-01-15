@@ -1,6 +1,7 @@
 'use client';
 
 import { cn } from '@/lib/utils';
+import { Camera, Check } from 'lucide-react';
 
 interface CaptureButtonProps {
   onCapture: () => void;
@@ -21,40 +22,59 @@ export function CaptureButton({ onCapture, disabled = false, isProcessing = fals
   };
 
   return (
-    <div className="flex justify-center">
+    <div className="flex flex-col items-center gap-2">
       <button
         onClick={handleClick}
         disabled={disabled || isProcessing}
         className={cn(
-          'relative w-16 h-16 rounded-full',
-          'bg-white/10 border-[3px] border-white',
+          'relative w-20 h-20 rounded-full',
           'flex items-center justify-center',
-          'transition-all duration-200',
+          'transition-all duration-300',
           'touch-target',
-          'active:scale-95',
-          'disabled:opacity-50 disabled:cursor-not-allowed',
-          'focus:outline-none focus:ring-4 focus:ring-primary/50'
+          'focus:outline-none',
+          disabled && !isProcessing && 'opacity-50 cursor-not-allowed',
+          // Default state: white ring with inner circle
+          !isProcessing && 'active:scale-95'
         )}
-        aria-label={isProcessing ? 'Processing...' : 'Capture photo'}
+        aria-label={isProcessing ? 'Analyzing...' : 'Capture photo'}
       >
-        {/* Inner circle */}
+        {/* Outer ring - always visible */}
         <div
           className={cn(
-            'w-11 h-11 rounded-full',
-            'transition-all duration-200',
+            'absolute inset-0 rounded-full transition-all duration-300',
             isProcessing
-              ? 'bg-primary/50 animate-pulse'
-              : 'bg-white hover:bg-white/90 active:bg-primary'
+              ? 'border-4 border-primary/30'
+              : 'border-[3px] border-white shadow-[0_0_20px_rgba(255,255,255,0.2)]'
           )}
         />
 
-        {/* Processing ring */}
+        {/* Spinning ring when processing */}
         {isProcessing && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-full h-full border-4 border-transparent border-t-primary rounded-full animate-spin" />
-          </div>
+          <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-primary animate-spin" />
         )}
+
+        {/* Inner content */}
+        <div
+          className={cn(
+            'relative z-10 rounded-full transition-all duration-300 flex items-center justify-center',
+            isProcessing
+              ? 'w-14 h-14 bg-primary/20'
+              : 'w-14 h-14 bg-white hover:bg-white/90 active:bg-primary active:scale-95'
+          )}
+        >
+          {isProcessing ? (
+            <Camera className="w-6 h-6 text-primary animate-pulse" />
+          ) : null}
+        </div>
       </button>
+
+      {/* Status text */}
+      <p className={cn(
+        'text-xs font-medium transition-all duration-300',
+        isProcessing ? 'text-primary' : 'text-white/70'
+      )}>
+        {isProcessing ? 'Analyzing...' : 'Tap to scan'}
+      </p>
     </div>
   );
 }
