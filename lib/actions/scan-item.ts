@@ -1,6 +1,7 @@
 'use server';
 
 import { identifyItemWithGemini, identifyItemFromDescription } from '@/lib/api/gemini';
+import { fetchEbayMarketData, isEbayConfigured } from '@/lib/api/ebay';
 import { mockIdentifyItem, mockFetchMarketData, generateMarketDataFromAIEstimate } from '@/lib/mocks';
 import { calculateVestScore } from '@/lib/vest';
 import { ScanResult, MarketData, ItemIdentity, GeminiError } from '@/lib/types';
@@ -70,11 +71,31 @@ export async function scanItem(imageBase64: string | string[]): Promise<ScanResp
   }
 
   // Step 2: Fetch market data
-  // If we have AI price estimates, use those to generate realistic market data
-  // TODO: Replace with real eBay API when configured
   let marketData: MarketData;
 
-  if (itemIdentity.priceEstimate) {
+  // Try eBay API first if configured
+  if (await isEbayConfigured()) {
+    try {
+      console.log('Fetching eBay market data...');
+      marketData = await fetchEbayMarketData(
+        itemIdentity.searchQuery,
+        itemIdentity.priceEstimate
+          ? { low: itemIdentity.priceEstimate.low, mid: itemIdentity.priceEstimate.mid, high: itemIdentity.priceEstimate.high }
+          : undefined
+      );
+      console.log('Using eBay market data');
+    } catch (ebayError) {
+      console.error('eBay API error, falling back:', ebayError);
+      // Fall back to AI estimates or mock data
+      if (itemIdentity.priceEstimate) {
+        marketData = generateMarketDataFromAIEstimate(itemIdentity.priceEstimate, itemIdentity.name);
+        console.log('Using AI-generated market data (eBay fallback)');
+      } else {
+        marketData = await mockFetchMarketData(itemIdentity.searchQuery);
+        console.log('Using mock market data (eBay fallback)');
+      }
+    }
+  } else if (itemIdentity.priceEstimate) {
     // Use AI-powered estimates to generate market data
     marketData = generateMarketDataFromAIEstimate(itemIdentity.priceEstimate, itemIdentity.name);
     console.log('Using AI-generated market data');
@@ -122,9 +143,22 @@ export async function identifyFromText(description: string): Promise<ScanRespons
     const itemIdentity = await identifyItemFromDescription(description);
     console.log('Text identification result:', itemIdentity.name);
 
-    // Generate market data from AI estimate
+    // Fetch market data - try eBay first
     let marketData: MarketData;
-    if (itemIdentity.priceEstimate) {
+    if (await isEbayConfigured()) {
+      try {
+        marketData = await fetchEbayMarketData(
+          itemIdentity.searchQuery,
+          itemIdentity.priceEstimate
+            ? { low: itemIdentity.priceEstimate.low, mid: itemIdentity.priceEstimate.mid, high: itemIdentity.priceEstimate.high }
+            : undefined
+        );
+      } catch {
+        marketData = itemIdentity.priceEstimate
+          ? generateMarketDataFromAIEstimate(itemIdentity.priceEstimate, itemIdentity.name)
+          : await mockFetchMarketData(itemIdentity.searchQuery);
+      }
+    } else if (itemIdentity.priceEstimate) {
       marketData = generateMarketDataFromAIEstimate(itemIdentity.priceEstimate, itemIdentity.name);
     } else {
       marketData = await mockFetchMarketData(itemIdentity.searchQuery);
