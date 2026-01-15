@@ -188,39 +188,45 @@ export async function searchEbayListings(
 /**
  * Calculate triangulated price from AI estimate and eBay data
  * Uses weighted average based on how much eBay data we have
+ *
+ * IMPORTANT: When we have few eBay results, we trust AI more heavily
+ * because a single wrong eBay result can skew pricing badly
  */
 function calculateTriangulatedPrice(
   aiEstimate: { low: number; mid: number; high: number },
   ebayData: { avgPrice: number; minPrice: number; maxPrice: number; listingCount: number }
 ): TriangulatedPrice {
   // Weight eBay data based on listing count
+  // With few results, trust AI much more heavily
   let ebayWeight: number;
   let dataQuality: 'high' | 'medium' | 'low';
 
-  if (ebayData.listingCount >= 10) {
-    ebayWeight = 0.75;
+  if (ebayData.listingCount >= 15) {
+    ebayWeight = 0.7;
     dataQuality = 'high';
-  } else if (ebayData.listingCount >= 5) {
+  } else if (ebayData.listingCount >= 8) {
     ebayWeight = 0.5;
     dataQuality = 'medium';
-  } else if (ebayData.listingCount >= 1) {
+  } else if (ebayData.listingCount >= 4) {
     ebayWeight = 0.3;
     dataQuality = 'low';
+  } else if (ebayData.listingCount >= 1) {
+    // Very few results - barely trust eBay, rely mostly on AI
+    ebayWeight = 0.15;
+    dataQuality = 'low';
   } else {
-    // No eBay data, use AI with discount for uncertainty
+    // No eBay data, use AI with slight discount for uncertainty
     return {
-      low: aiEstimate.low * 0.8,
-      mid: aiEstimate.mid * 0.85,
-      high: aiEstimate.high * 0.9,
-      confidence: 0.4,
+      low: aiEstimate.low * 0.9,
+      mid: aiEstimate.mid * 0.95,
+      high: aiEstimate.high,
+      confidence: 0.5,
       dataQuality: 'low',
-      reasoning: 'No eBay listings found - using AI estimate with conservative discount',
+      reasoning: 'No eBay listings found - using AI estimate',
       marketInsight: 'Limited market data available',
       recommendation: 'maybe',
     };
   }
-
-  const aiWeight = 1 - ebayWeight;
 
   // eBay shows asking prices, so apply 20% discount to estimate sold prices
   const ebayAdjusted = {
@@ -229,16 +235,26 @@ function calculateTriangulatedPrice(
     high: ebayData.maxPrice * 0.85,
   };
 
+  // Additional sanity check: if eBay avg is wildly different from AI (>3x or <0.3x),
+  // reduce eBay weight further as data may be unreliable
+  const priceRatio = ebayAdjusted.mid / aiEstimate.mid;
+  let adjustedEbayWeight = ebayWeight;
+  if (priceRatio > 2.5 || priceRatio < 0.4) {
+    adjustedEbayWeight = ebayWeight * 0.5; // Halve eBay weight when prices seem unreasonable
+    console.log(`eBay/AI price ratio ${priceRatio.toFixed(2)} is suspicious - reducing eBay weight`);
+  }
+  const adjustedAiWeight = 1 - adjustedEbayWeight;
+
   // Weighted combination
-  const finalLow = (aiEstimate.low * aiWeight) + (ebayAdjusted.low * ebayWeight);
-  const finalMid = (aiEstimate.mid * aiWeight) + (ebayAdjusted.mid * ebayWeight);
-  const finalHigh = (aiEstimate.high * aiWeight) + (ebayAdjusted.high * ebayWeight);
+  const finalLow = (aiEstimate.low * adjustedAiWeight) + (ebayAdjusted.low * adjustedEbayWeight);
+  const finalMid = (aiEstimate.mid * adjustedAiWeight) + (ebayAdjusted.mid * adjustedEbayWeight);
+  const finalHigh = (aiEstimate.high * adjustedAiWeight) + (ebayAdjusted.high * adjustedEbayWeight);
 
   // Determine recommendation based on data quality
   let recommendation: 'buy' | 'maybe' | 'pass' = 'maybe';
   if (dataQuality === 'high' && ebayData.listingCount > 15) {
     recommendation = 'buy'; // Good data confidence
-  } else if (ebayData.listingCount < 3) {
+  } else if (ebayData.listingCount < 4) {
     recommendation = 'pass'; // Too risky with little data
   }
 
@@ -246,9 +262,9 @@ function calculateTriangulatedPrice(
     low: Math.round(finalLow * 100) / 100,
     mid: Math.round(finalMid * 100) / 100,
     high: Math.round(finalHigh * 100) / 100,
-    confidence: ebayWeight + 0.2,
+    confidence: Math.min(0.9, adjustedEbayWeight + 0.3),
     dataQuality,
-    reasoning: `Weighted ${Math.round(ebayWeight * 100)}% eBay (${ebayData.listingCount} listings), ${Math.round(aiWeight * 100)}% AI. eBay prices adjusted -20% for asking vs sold.`,
+    reasoning: `Weighted ${Math.round(adjustedAiWeight * 100)}% AI, ${Math.round(adjustedEbayWeight * 100)}% eBay (${ebayData.listingCount} listings). eBay prices adjusted -20% for asking vs sold.`,
     marketInsight: ebayData.listingCount > 20 ? 'High supply - competitive market' : ebayData.listingCount < 5 ? 'Low supply - limited data' : 'Moderate market activity',
     recommendation,
   };
@@ -270,8 +286,17 @@ export async function fetchEbayMarketData(
     // Log search metadata
     console.log('eBay search completed for:', searchMeta.usedQuery);
 
-    // Calculate real eBay listing stats
-    const activePrices = active.map(l => l.currentPrice).filter(p => p > 0);
+    // Calculate real eBay listing stats with outlier removal
+    const rawPrices = active.map(l => l.currentPrice).filter(p => p > 0);
+    const aiMid = aiEstimate?.mid;
+
+    // Remove outliers - especially important when we have few results
+    const activePrices = removeOutliers(rawPrices, aiMid);
+
+    if (activePrices.length < rawPrices.length) {
+      console.log(`Filtered ${rawPrices.length - activePrices.length} outlier eBay listings`);
+    }
+
     const avgActivePrice = activePrices.length > 0
       ? activePrices.reduce((a, b) => a + b, 0) / activePrices.length
       : 0;
@@ -449,6 +474,52 @@ function calculatePriceVolatility(prices: number[]): number {
   const variance = prices.reduce((sum, p) => sum + Math.pow(p - mean, 2), 0) / prices.length;
   const stdDev = Math.sqrt(variance);
   return Math.round((stdDev / mean) * 100) / 100;
+}
+
+/**
+ * Remove outliers from eBay prices using IQR method
+ * This helps filter out misidentified items, bundles, or special editions
+ */
+function removeOutliers(
+  prices: number[],
+  aiMidEstimate?: number
+): number[] {
+  if (prices.length < 3) {
+    // With very few results, if we have an AI estimate, filter by reasonableness
+    if (aiMidEstimate && prices.length > 0) {
+      // Keep prices within 3x of AI estimate (generous range)
+      const filtered = prices.filter(p =>
+        p >= aiMidEstimate * 0.2 && p <= aiMidEstimate * 3
+      );
+      // If all prices are outliers, trust AI fully
+      if (filtered.length === 0) {
+        console.log('All eBay prices appear to be outliers relative to AI estimate');
+        return [];
+      }
+      return filtered;
+    }
+    return prices;
+  }
+
+  // Standard IQR outlier detection for larger datasets
+  const sorted = [...prices].sort((a, b) => a - b);
+  const q1Index = Math.floor(sorted.length * 0.25);
+  const q3Index = Math.floor(sorted.length * 0.75);
+  const q1 = sorted[q1Index];
+  const q3 = sorted[q3Index];
+  const iqr = q3 - q1;
+
+  // Use 1.5x IQR rule
+  const lowerBound = q1 - (iqr * 1.5);
+  const upperBound = q3 + (iqr * 1.5);
+
+  const filtered = prices.filter(p => p >= lowerBound && p <= upperBound);
+
+  if (filtered.length < prices.length) {
+    console.log(`Removed ${prices.length - filtered.length} outlier prices (bounds: $${lowerBound.toFixed(2)}-$${upperBound.toFixed(2)})`);
+  }
+
+  return filtered.length > 0 ? filtered : prices; // Fall back to all if all removed
 }
 
 /**

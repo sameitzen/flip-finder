@@ -91,43 +91,43 @@
 }
 
 .dark {
-  /* Flip Finder: Deep void black financial terminal aesthetic */
-  /* #09090b equivalent in oklch */
-  --background: oklch(0.05 0 0);
+  /* Flip Finder: Dark theme with better section contrast */
+  --background: oklch(0.12 0.005 270);
   --foreground: oklch(0.98 0 0);
-  /* Slightly lighter card for contrast */
-  --card: oklch(0.10 0.005 270);
+  /* Cards clearly distinct from background */
+  --card: oklch(0.17 0.008 270);
   --card-foreground: oklch(0.98 0 0);
-  --popover: oklch(0.10 0.005 270);
+  --popover: oklch(0.17 0.008 270);
   --popover-foreground: oklch(0.98 0 0);
-  /* Primary: Emerald #4ade80 equivalent */
+  /* Primary: Emerald */
   --primary: oklch(0.77 0.17 155);
   --primary-foreground: oklch(0.10 0 0);
-  --secondary: oklch(0.15 0.005 270);
+  --secondary: oklch(0.22 0.008 270);
   --secondary-foreground: oklch(0.98 0 0);
-  --muted: oklch(0.15 0.005 270);
-  --muted-foreground: oklch(0.60 0 0);
-  --accent: oklch(0.15 0.005 270);
+  --muted: oklch(0.22 0.008 270);
+  --muted-foreground: oklch(0.65 0 0);
+  --accent: oklch(0.22 0.008 270);
   --accent-foreground: oklch(0.98 0 0);
   --destructive: oklch(0.65 0.2 25);
-  --border: oklch(0.18 0.005 270);
-  --input: oklch(0.18 0.005 270);
+  /* Borders more visible */
+  --border: oklch(0.28 0.01 270);
+  --input: oklch(0.22 0.008 270);
   --ring: oklch(0.77 0.17 155);
   --chart-1: oklch(0.77 0.17 155);
   --chart-2: oklch(0.80 0.15 85);
   --chart-3: oklch(0.65 0.2 25);
   --chart-4: oklch(0.70 0.15 220);
   --chart-5: oklch(0.75 0.12 310);
-  --sidebar: oklch(0.08 0.005 270);
+  --sidebar: oklch(0.14 0.005 270);
   --sidebar-foreground: oklch(0.98 0 0);
   --sidebar-primary: oklch(0.77 0.17 155);
   --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.15 0.005 270);
+  --sidebar-accent: oklch(0.20 0.008 270);
   --sidebar-accent-foreground: oklch(0.98 0 0);
-  --sidebar-border: oklch(0.18 0.005 270);
+  --sidebar-border: oklch(0.28 0.01 270);
   --sidebar-ring: oklch(0.77 0.17 155);
 
-  /* V.E.S.T. Signal Colors - Updated to emerald */
+  /* V.E.S.T. Signal Colors */
   --vest-buy: oklch(0.77 0.17 155);
   --vest-hold: oklch(0.80 0.15 85);
   --vest-pass: oklch(0.65 0.2 25);

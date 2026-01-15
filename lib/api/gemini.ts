@@ -65,7 +65,13 @@ PRICING REALITY CHECK:
 - Brand matters: Apple, Nike, specific collectibles hold value; generic brands don't
 - Shipping costs eat into profit - factor this into realistic pricing
 
-SEARCH QUERY: Make it specific enough to find this EXACT item's sold history, not similar items.
+SEARCH QUERY RULES (CRITICAL for accurate eBay results):
+- Keep queries SHORT and simple: "brand + product type + size" (e.g., "Stanley 40oz tumbler")
+- NEVER include condition words (used, new, like-new, good, fair)
+- NEVER include colors unless color is the primary identifier
+- NEVER include subjective descriptors (beautiful, rare, vintage, nice)
+- DO include: brand, model number/name, size if relevant
+- Example: "Stanley Quencher 40oz" NOT "Stanley 40oz Quencher tumbler black used H2.0"
 
 IMPORTANT: If image is unclear, provide best guess with low confidence. Only respond "Unidentifiable Item" if image is completely unreadable.`;
 
