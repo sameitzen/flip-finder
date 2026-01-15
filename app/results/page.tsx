@@ -233,7 +233,7 @@ export default function ResultsPage() {
     <div className="flex flex-col min-h-screen">
       <Header />
 
-      <main className="flex-1 overflow-y-auto p-4 space-y-4 pb-24">
+      <main className="flex-1 overflow-y-auto p-4 space-y-4 pb-40">
         {/* Item identification */}
         <ItemIdentification
           item={scanData.itemIdentity}
@@ -244,7 +244,7 @@ export default function ResultsPage() {
           isRefining={isRefining}
         />
 
-        {/* NEW: Profit Hero - Net profit as the main focus */}
+        {/* Profit Hero - Net profit as the main focus */}
         <ProfitHero
           netProfit={vestScore.estimatedProfit}
           roi={vestScore.roi}
@@ -266,16 +266,7 @@ export default function ResultsPage() {
           gradeOverrideExplanation={extendedVestScore.overrideExplanation}
         />
 
-        {/* Profit slider */}
-        <ProfitSlider
-          buyPrice={buyPrice}
-          onBuyPriceChange={setBuyPrice}
-          medianSoldPrice={scanData.marketData.summary.medianSoldPrice}
-          estimatedProfit={vestScore.estimatedProfit}
-          roi={vestScore.roi}
-        />
-
-        {/* NEW: Comps Gallery - Show actual eBay listings */}
+        {/* Comps Gallery - Show actual eBay listings */}
         {scanData.marketData.activeListings.length > 0 && (
           <CompsGallery
             listings={scanData.marketData.activeListings}
@@ -288,7 +279,7 @@ export default function ResultsPage() {
           />
         )}
 
-        {/* NEW: AI Signals - Structured bullet points */}
+        {/* AI Signals - Structured bullet points */}
         {scanData.itemIdentity.priceEstimate && (
           <AISignals
             reasoning={scanData.itemIdentity.priceEstimate.reasoning}
@@ -321,6 +312,15 @@ export default function ResultsPage() {
           </Button>
         </div>
       </main>
+
+      {/* Fixed bottom slider - in thumb zone */}
+      <ProfitSlider
+        buyPrice={buyPrice}
+        onBuyPriceChange={setBuyPrice}
+        medianSoldPrice={scanData.marketData.summary.medianSoldPrice}
+        estimatedProfit={vestScore.estimatedProfit}
+        roi={vestScore.roi}
+      />
     </div>
   );
 }

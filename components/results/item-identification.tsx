@@ -72,6 +72,8 @@ export function ItemIdentification({
 
   const primaryImage = images[0];
   const additionalImages = images.slice(1);
+  const MAX_ADDITIONAL_SLOTS = 3;
+  const emptySlots = Math.max(0, MAX_ADDITIONAL_SLOTS - additionalImages.length);
 
   return (
     <Card className="border-border/50 bg-card/50 overflow-hidden">
@@ -91,21 +93,38 @@ export function ItemIdentification({
                 </div>
               )}
 
-              {/* Additional images thumbnails */}
-              {additionalImages.length > 0 && (
-                <div className="flex flex-col gap-1">
-                  {additionalImages.slice(0, 2).map((img, idx) => (
-                    <div key={idx} className="w-9 h-9 rounded overflow-hidden bg-muted">
-                      <img src={img} alt="" className="w-full h-full object-cover" />
-                    </div>
-                  ))}
-                  {additionalImages.length > 2 && (
-                    <div className="w-9 h-9 rounded bg-muted/50 flex items-center justify-center text-xs text-muted-foreground">
-                      +{additionalImages.length - 2}
-                    </div>
-                  )}
-                </div>
-              )}
+              {/* Additional images + ghost slots */}
+              <div className="flex flex-col gap-1">
+                {/* Existing additional images */}
+                {additionalImages.slice(0, MAX_ADDITIONAL_SLOTS).map((img, idx) => (
+                  <div key={idx} className="w-9 h-9 rounded overflow-hidden bg-muted">
+                    <img src={img} alt="" className="w-full h-full object-cover" />
+                  </div>
+                ))}
+
+                {/* Ghost slots - dashed outlines for adding more photos */}
+                {emptySlots > 0 && additionalImages.length < MAX_ADDITIONAL_SLOTS && (
+                  <>
+                    {Array.from({ length: Math.min(emptySlots, 2) }).map((_, idx) => (
+                      <button
+                        key={`ghost-${idx}`}
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isRefining}
+                        className="w-9 h-9 rounded border-2 border-dashed border-border/50 flex items-center justify-center hover:border-primary/50 hover:bg-primary/5 transition-colors disabled:opacity-50"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-muted-foreground/50" />
+                      </button>
+                    ))}
+                  </>
+                )}
+
+                {/* Overflow indicator */}
+                {additionalImages.length > MAX_ADDITIONAL_SLOTS && (
+                  <div className="w-9 h-9 rounded bg-muted/50 flex items-center justify-center text-xs text-muted-foreground">
+                    +{additionalImages.length - MAX_ADDITIONAL_SLOTS}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 

@@ -7,6 +7,7 @@ import { ProfitBreakdown } from '@/lib/utils/profit-calculator';
 import { Grade, Recommendation } from '@/lib/types';
 import { ChevronDown, ChevronUp, TrendingUp, Clock, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAnimatedNumber } from '@/hooks/use-animated-number';
 
 interface ProfitHeroProps {
   netProfit: number;
@@ -29,11 +30,15 @@ export function ProfitHero({
 }: ProfitHeroProps) {
   const [showBreakdown, setShowBreakdown] = useState(false);
 
+  // Animated profit value (count-up effect)
+  const animatedProfit = useAnimatedNumber(Math.abs(netProfit), { duration: 800, decimals: 2 });
+  const animatedRoi = useAnimatedNumber(roi, { duration: 600, decimals: 0 });
+
   const isPositive = netProfit >= 0;
-  const profitColor = isPositive ? 'text-green-500' : 'text-red-500';
+  const profitColor = isPositive ? 'text-emerald-400' : 'text-red-500';
   const profitGlow = isPositive
-    ? 'drop-shadow-[0_0_20px_rgba(34,197,94,0.3)]'
-    : 'drop-shadow-[0_0_20px_rgba(239,68,68,0.3)]';
+    ? 'drop-shadow-[0_0_24px_rgba(52,211,153,0.4)]'
+    : 'drop-shadow-[0_0_24px_rgba(239,68,68,0.4)]';
 
   const velocityInfo = getVelocityInfo(daysToSell);
   const gradeInfo = getGradeInfo(grade);
@@ -51,8 +56,8 @@ export function ProfitHero({
             onClick={() => setShowBreakdown(!showBreakdown)}
             className="group"
           >
-            <p className={cn('text-5xl font-bold font-mono', profitColor, profitGlow)}>
-              {isPositive ? '+' : ''}${Math.abs(netProfit).toFixed(2)}
+            <p className={cn('text-5xl font-bold font-mono tabular-nums', profitColor, profitGlow)}>
+              {isPositive ? '+' : '-'}${animatedProfit.toFixed(2)}
             </p>
             <p className="text-xs text-muted-foreground mt-1 flex items-center justify-center gap-1">
               tap for breakdown
@@ -67,9 +72,9 @@ export function ProfitHero({
           {/* ROI and Velocity inline */}
           <div className="flex items-center justify-center gap-4 mt-4 text-sm">
             <div className="flex items-center gap-1.5">
-              <TrendingUp className={cn('w-4 h-4', roi >= 50 ? 'text-green-500' : roi >= 20 ? 'text-yellow-500' : 'text-red-500')} />
-              <span className={cn('font-medium', roi >= 50 ? 'text-green-500' : roi >= 20 ? 'text-yellow-500' : 'text-red-500')}>
-                {roi.toFixed(0)}% ROI
+              <TrendingUp className={cn('w-4 h-4', roi >= 50 ? 'text-emerald-400' : roi >= 20 ? 'text-yellow-500' : 'text-red-500')} />
+              <span className={cn('font-medium font-mono tabular-nums', roi >= 50 ? 'text-emerald-400' : roi >= 20 ? 'text-yellow-500' : 'text-red-500')}>
+                {animatedRoi.toFixed(0)}% ROI
               </span>
             </div>
             <span className="text-border">•</span>
@@ -180,10 +185,10 @@ function getVelocityInfo(days: number): {
   percent: number;
 } {
   if (days <= 3) {
-    return { label: 'Lightning Fast', color: 'text-green-500', bgColor: 'bg-green-500', percent: 100 };
+    return { label: 'Lightning Fast', color: 'text-emerald-400', bgColor: 'bg-emerald-400', percent: 100 };
   }
   if (days <= 7) {
-    return { label: 'Very Fast', color: 'text-green-400', bgColor: 'bg-green-400', percent: 85 };
+    return { label: 'Very Fast', color: 'text-emerald-400', bgColor: 'bg-emerald-400', percent: 85 };
   }
   if (days <= 14) {
     return { label: 'Quick', color: 'text-yellow-400', bgColor: 'bg-yellow-400', percent: 65 };
@@ -204,16 +209,16 @@ function getGradeInfo(grade: Grade): {
 } {
   if (grade.startsWith('A')) {
     return {
-      textColor: 'text-green-500',
-      borderColor: 'border-green-500',
-      bgColor: 'bg-green-500/10',
+      textColor: 'text-emerald-400',
+      borderColor: 'border-emerald-400',
+      bgColor: 'bg-emerald-400/10',
     };
   }
   if (grade.startsWith('B')) {
     return {
-      textColor: 'text-green-400',
-      borderColor: 'border-green-400',
-      bgColor: 'bg-green-400/10',
+      textColor: 'text-emerald-400',
+      borderColor: 'border-emerald-400/70',
+      bgColor: 'bg-emerald-400/10',
     };
   }
   if (grade.startsWith('C')) {
@@ -243,8 +248,8 @@ function getRecommendationInfo(rec: Recommendation): {
   borderColor: string;
 } {
   const info: Record<Recommendation, { label: string; color: string; borderColor: string }> = {
-    'strong-buy': { label: 'STRONG BUY', color: 'text-green-500', borderColor: 'border-green-500' },
-    'buy': { label: 'BUY', color: 'text-green-400', borderColor: 'border-green-400' },
+    'strong-buy': { label: 'STRONG BUY', color: 'text-emerald-400', borderColor: 'border-emerald-400' },
+    'buy': { label: 'BUY', color: 'text-emerald-400', borderColor: 'border-emerald-400/70' },
     'hold': { label: 'HOLD', color: 'text-yellow-400', borderColor: 'border-yellow-400' },
     'pass': { label: 'PASS', color: 'text-orange-400', borderColor: 'border-orange-400' },
     'strong-pass': { label: 'STRONG PASS', color: 'text-red-500', borderColor: 'border-red-500' },
