@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { ItemIdentity, MarketData, VestScore } from '@/lib/types';
 import { useVestCalculation } from '@/hooks/use-vest-calculation';
-import { identifyFromText, scanItem } from '@/lib/actions/scan-item';
+import { identifyFromText } from '@/lib/actions/scan-item';
 import { Header } from '@/components/layout';
 import {
   ItemIdentification,
@@ -37,7 +37,6 @@ export default function ResultsPage() {
   const [buyPrice, setBuyPrice] = useState<number>(0);
   const [isSaved, setIsSaved] = useState(false);
   const [isCorreecting, setIsCorreecting] = useState(false);
-  const [isRefining, setIsRefining] = useState(false);
   const [excludedListings, setExcludedListings] = useState<Set<number>>(new Set());
 
   // Load scan data from sessionStorage
@@ -157,44 +156,6 @@ export default function ResultsPage() {
     setIsCorreecting(false);
   };
 
-  const handleAddImages = async (newImages: string[]) => {
-    if (!scanData) return;
-
-    setIsRefining(true);
-
-    // Combine existing images with new ones
-    const existingImages = scanData.images || [scanData.imageBase64];
-    const allImages = [...existingImages, ...newImages];
-
-    // Re-analyze with all images
-    const result = await scanItem(allImages);
-
-    if (result.success) {
-      const newScanData: StoredScan = {
-        ...scanData,
-        itemIdentity: result.data.itemIdentity,
-        marketData: result.data.marketData,
-        vestScore: result.data.vestScore,
-        images: allImages,
-        imageBase64: allImages[0], // Keep first image as primary
-      };
-
-      sessionStorage.setItem('currentScan', JSON.stringify(newScanData));
-      setScanData(newScanData);
-      setBuyPrice(Math.round(result.data.marketData.summary.medianSoldPrice * 0.4));
-      setIsSaved(false);
-
-      if ('vibrate' in navigator) {
-        navigator.vibrate(50);
-      }
-    } else {
-      console.error('Refinement failed:', result.error);
-      alert(result.error.message);
-    }
-
-    setIsRefining(false);
-  };
-
   // Handle excluding a listing from comps
   const handleExcludeListing = useCallback((index: number, _reason: string) => {
     setExcludedListings(prev => {
@@ -239,9 +200,7 @@ export default function ResultsPage() {
           item={scanData.itemIdentity}
           images={scanData.images || [scanData.imageBase64]}
           onCorrect={handleCorrection}
-          onAddImages={handleAddImages}
           isCorreecting={isCorreecting}
-          isRefining={isRefining}
         />
 
         {/* Profit Hero - Net profit as the main focus */}
@@ -280,9 +239,6 @@ export default function ResultsPage() {
           <CompsGallery
             listings={scanData.marketData.activeListings}
             originalQuery={scanData.itemIdentity.searchQuery}
-            usedQuery={scanData.marketData.searchMeta?.usedQuery}
-            queryBroadened={scanData.marketData.searchMeta?.queryBroadened}
-            broadeningExplanation={scanData.marketData.searchMeta?.broadeningExplanation}
             onExclude={handleExcludeListing}
             excludedIndices={excludedListings}
           />

@@ -1,11 +1,9 @@
 'use server';
 
 import { MarketData, SoldListing, ActiveListing, MarketSummary } from '@/lib/types';
-import { broadenQuery, getBroadeningExplanation } from '@/lib/utils/keyword-broadener';
 
 const EBAY_API_BASE = 'https://api.ebay.com';
 const EBAY_TIMEOUT_MS = 10000; // 10 second timeout for eBay calls
-const MIN_RESULTS_FOR_CONFIDENCE = 3; // Minimum results before trying broader query
 
 // Triangulated price result type
 export interface TriangulatedPrice {
@@ -23,9 +21,6 @@ export interface TriangulatedPrice {
 export interface SearchMetadata {
   originalQuery: string;
   usedQuery: string;
-  tier: 1 | 2 | 3;
-  queryBroadened: boolean;
-  broadeningExplanation: string | null;
 }
 
 // Timeout helper
@@ -155,8 +150,8 @@ async function executeEbaySearch(
 }
 
 /**
- * Search for listings on eBay with progressive query broadening
- * If initial query returns too few results, automatically tries broader queries
+ * Search for listings on eBay using the exact query provided
+ * No query broadening - we want precise matches for accurate pricing
  */
 export async function searchEbayListings(
   searchQuery: string,
@@ -165,78 +160,26 @@ export async function searchEbayListings(
   const token = await getEbayToken();
   const limit = options.limit || 50;
 
-  // Get progressively broader queries
-  const queries = broadenQuery(searchQuery);
-
-  // Try each query tier until we get enough results
-  for (const { query, tier, strippedTerms } of queries) {
-    try {
-      const result = await executeEbaySearch(token, query, limit);
-
-      // If we have enough results, use this query
-      if (result.active.length >= MIN_RESULTS_FOR_CONFIDENCE) {
-        const broadeningExplanation = getBroadeningExplanation(
-          searchQuery,
-          query,
-          tier,
-          strippedTerms
-        );
-
-        console.log(`eBay search: Tier ${tier} query returned ${result.active.length} results`);
-        if (tier > 1) {
-          console.log(`Query broadened: "${searchQuery}" → "${query}"`);
-        }
-
-        return {
-          ...result,
-          searchMeta: {
-            originalQuery: searchQuery,
-            usedQuery: query,
-            tier,
-            queryBroadened: tier > 1,
-            broadeningExplanation,
-          },
-        };
-      }
-
-      console.log(`eBay search: Tier ${tier} returned only ${result.active.length} results, trying broader query...`);
-    } catch (error) {
-      console.error(`eBay search error on tier ${tier}:`, error);
-      // Continue to next tier
-    }
-  }
-
-  // If all tiers fail or return insufficient results, use the last tier's results
-  const lastQuery = queries[queries.length - 1];
   try {
-    const result = await executeEbaySearch(token, lastQuery.query, limit);
+    const result = await executeEbaySearch(token, searchQuery, limit);
+    console.log(`eBay search: "${searchQuery}" returned ${result.active.length} results`);
 
     return {
       ...result,
       searchMeta: {
         originalQuery: searchQuery,
-        usedQuery: lastQuery.query,
-        tier: lastQuery.tier,
-        queryBroadened: lastQuery.tier > 1,
-        broadeningExplanation: getBroadeningExplanation(
-          searchQuery,
-          lastQuery.query,
-          lastQuery.tier,
-          lastQuery.strippedTerms
-        ),
+        usedQuery: searchQuery,
       },
     };
-  } catch {
-    // Return empty results if everything fails
+  } catch (error) {
+    console.error('eBay search error:', error);
+    // Return empty results if search fails
     return {
       active: [],
       totalActive: 0,
       searchMeta: {
         originalQuery: searchQuery,
-        usedQuery: lastQuery.query,
-        tier: lastQuery.tier,
-        queryBroadened: true,
-        broadeningExplanation: 'Search failed - no results available',
+        usedQuery: searchQuery,
       },
     };
   }
@@ -324,10 +267,8 @@ export async function fetchEbayMarketData(
     console.log('Fetching eBay data for:', searchQuery);
     const { active, totalActive, searchMeta } = await searchEbayListings(searchQuery, { limit: 50 });
 
-    // Log search metadata for transparency
-    if (searchMeta.queryBroadened) {
-      console.log('Search query was broadened:', searchMeta.broadeningExplanation);
-    }
+    // Log search metadata
+    console.log('eBay search completed for:', searchMeta.usedQuery);
 
     // Calculate real eBay listing stats
     const activePrices = active.map(l => l.currentPrice).filter(p => p > 0);

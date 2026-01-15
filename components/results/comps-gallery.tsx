@@ -2,7 +2,6 @@
 
 import { useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ActiveListing } from '@/lib/types';
 import { ExternalLink, X, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
@@ -11,27 +10,23 @@ import { cn } from '@/lib/utils';
 interface CompsGalleryProps {
   listings: ActiveListing[];
   originalQuery: string;
-  usedQuery?: string;
-  queryBroadened?: boolean;
-  broadeningExplanation?: string | null;
   onExclude?: (index: number, reason: string) => void;
   excludedIndices?: Set<number>;
 }
 
 const EXCLUSION_REASONS = [
-  'Different model',
-  'Wrong condition',
-  'Incomplete/broken',
-  'Outlier price',
-  'Other',
+  { label: 'Different model/version', description: 'Not the same product' },
+  { label: 'Different condition', description: 'Much better or worse condition' },
+  { label: 'Missing parts/accessories', description: 'Incomplete item' },
+  { label: 'Different size/color', description: 'Wrong variant' },
+  { label: 'Lot/bundle listing', description: 'Multiple items together' },
+  { label: 'Suspiciously cheap', description: 'Price seems too good' },
+  { label: 'Overpriced outlier', description: 'Much higher than others' },
 ];
 
 export function CompsGallery({
   listings,
   originalQuery,
-  usedQuery,
-  queryBroadened,
-  broadeningExplanation,
   onExclude,
   excludedIndices = new Set(),
 }: CompsGalleryProps) {
@@ -40,6 +35,9 @@ export function CompsGallery({
 
   const activeListings = listings.filter((_, i) => !excludedIndices.has(i));
   const excludedCount = excludedIndices.size;
+
+  // Build eBay search URL
+  const ebaySearchUrl = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(originalQuery)}&_sop=12`;
 
   const scroll = (direction: 'left' | 'right') => {
     if (!scrollRef.current) return;
@@ -85,27 +83,16 @@ export function CompsGallery({
               </span>
             )}
           </CardTitle>
-          <Button variant="ghost" size="sm" className="text-xs gap-1">
+          <a
+            href={ebaySearchUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
             <ExternalLink className="w-3 h-3" />
             View on eBay
-          </Button>
+          </a>
         </div>
-
-        {/* Query broadening notice */}
-        {queryBroadened && broadeningExplanation && (
-          <div className="flex items-start gap-2 mt-2 p-2 bg-yellow-500/10 rounded-lg">
-            <AlertCircle className="w-4 h-4 text-yellow-500 mt-0.5 flex-shrink-0" />
-            <div className="text-xs">
-              <p className="text-yellow-500 font-medium">Search broadened</p>
-              <p className="text-muted-foreground">{broadeningExplanation}</p>
-              {usedQuery && usedQuery !== originalQuery && (
-                <p className="text-muted-foreground mt-1">
-                  Used: &quot;{usedQuery}&quot;
-                </p>
-              )}
-            </div>
-          </div>
-        )}
       </CardHeader>
 
       <CardContent className="p-0">
@@ -189,22 +176,25 @@ export function CompsGallery({
 
                   {/* Exclusion menu */}
                   {isSelected && !isExcluded && onExclude && (
-                    <div className="mt-2 p-2 bg-card border border-border rounded-lg shadow-lg">
-                      <p className="text-xs font-medium mb-2">Exclude this listing?</p>
+                    <div className="mt-2 p-3 bg-card border border-border rounded-lg shadow-lg">
+                      <p className="text-xs font-medium mb-2">Why exclude this?</p>
                       <div className="space-y-1">
                         {EXCLUSION_REASONS.map((reason) => (
                           <button
-                            key={reason}
-                            onClick={() => handleExclude(index, reason)}
-                            className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-muted transition-colors"
+                            key={reason.label}
+                            onClick={() => handleExclude(index, reason.label)}
+                            className="w-full text-left px-2 py-2 rounded hover:bg-muted transition-colors group"
                           >
-                            {reason}
+                            <span className="text-xs font-medium">{reason.label}</span>
+                            <span className="block text-[10px] text-muted-foreground group-hover:text-foreground/70">
+                              {reason.description}
+                            </span>
                           </button>
                         ))}
                       </div>
                       <button
                         onClick={() => setSelectedIndex(null)}
-                        className="w-full mt-2 text-xs text-muted-foreground hover:text-foreground"
+                        className="w-full mt-3 pt-2 border-t border-border text-xs text-muted-foreground hover:text-foreground"
                       >
                         Cancel
                       </button>
