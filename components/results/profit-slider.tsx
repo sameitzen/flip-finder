@@ -1,7 +1,6 @@
 'use client';
 
 import { Slider } from '@/components/ui/slider';
-import { DollarSign } from 'lucide-react';
 
 interface ProfitSliderProps {
   buyPrice: number;
@@ -28,34 +27,32 @@ export function ProfitSlider({
   };
 
   return (
-    <div className="fixed bottom-16 left-0 right-0 z-40 bg-background/95 backdrop-blur-sm border-t border-border safe-bottom">
-      <div className="px-4 py-3">
-        {/* Label and value row */}
+    <div className="fixed bottom-16 inset-x-0 z-40">
+      {/* Gradient fade from content to slider */}
+      <div className="h-6 bg-gradient-to-t from-background to-transparent pointer-events-none" />
+
+      {/* Slider container - solid background, anchored */}
+      <div className="bg-background border-t border-border/50 px-5 pb-3 pt-3 safe-bottom">
+        {/* Compact header */}
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
-              <DollarSign className="w-4 h-4 text-primary" />
-            </div>
-            <span className="text-sm font-medium text-muted-foreground">Your buy price</span>
-          </div>
-          <span className="font-mono text-2xl font-bold tabular-nums">${buyPrice.toFixed(0)}</span>
+          <span className="text-xs text-muted-foreground uppercase tracking-wide">Buy Price</span>
+          <span className="font-mono text-lg font-semibold tabular-nums">${buyPrice}</span>
         </div>
 
-        {/* Slider - extra touch friendly */}
-        <div className="px-1">
-          <Slider
-            value={[buyPrice]}
-            onValueChange={handleSliderChange}
-            min={0}
-            max={maxPrice}
-            step={1}
-            className="touch-target [&_[role=slider]]:h-6 [&_[role=slider]]:w-6 [&_[role=slider]]:border-2"
-          />
-          <div className="flex justify-between text-xs text-muted-foreground mt-2">
-            <span>$0</span>
-            <span className="text-muted-foreground/60">median ${medianSoldPrice.toFixed(0)}</span>
-            <span>${maxPrice}</span>
-          </div>
+        {/* Slider */}
+        <Slider
+          value={[buyPrice]}
+          onValueChange={handleSliderChange}
+          min={0}
+          max={maxPrice}
+          step={1}
+          className="[&_[role=slider]]:h-5 [&_[role=slider]]:w-5"
+        />
+
+        {/* Min/max labels only */}
+        <div className="flex justify-between text-[10px] text-muted-foreground/40 mt-1.5 px-0.5">
+          <span>$0</span>
+          <span>${maxPrice}</span>
         </div>
       </div>
     </div>
