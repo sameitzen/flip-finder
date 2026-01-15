@@ -73,17 +73,18 @@ export async function scanItem(imageBase64: string | string[]): Promise<ScanResp
   // Step 2: Fetch market data
   let marketData: MarketData;
 
-  // Try eBay API first if configured
+  // Try eBay API first if configured - this now triangulates AI + eBay data
   if (await isEbayConfigured()) {
     try {
-      console.log('Fetching eBay market data...');
+      console.log('Fetching eBay market data with triangulation...');
       marketData = await fetchEbayMarketData(
         itemIdentity.searchQuery,
+        itemIdentity.name,
         itemIdentity.priceEstimate
           ? { low: itemIdentity.priceEstimate.low, mid: itemIdentity.priceEstimate.mid, high: itemIdentity.priceEstimate.high }
           : undefined
       );
-      console.log('Using eBay market data');
+      console.log('Using triangulated eBay + AI market data');
     } catch (ebayError) {
       console.error('eBay API error, falling back:', ebayError);
       // Fall back to AI estimates or mock data
@@ -143,12 +144,13 @@ export async function identifyFromText(description: string): Promise<ScanRespons
     const itemIdentity = await identifyItemFromDescription(description);
     console.log('Text identification result:', itemIdentity.name);
 
-    // Fetch market data - try eBay first
+    // Fetch market data - try eBay first with triangulation
     let marketData: MarketData;
     if (await isEbayConfigured()) {
       try {
         marketData = await fetchEbayMarketData(
           itemIdentity.searchQuery,
+          itemIdentity.name,
           itemIdentity.priceEstimate
             ? { low: itemIdentity.priceEstimate.low, mid: itemIdentity.priceEstimate.mid, high: itemIdentity.priceEstimate.high }
             : undefined

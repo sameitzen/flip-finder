@@ -1,6 +1,7 @@
 'use server';
 
 import { MarketData, SoldListing, ActiveListing, MarketSummary } from '@/lib/types';
+import { triangulatePrice, TriangulatedPrice } from './gemini';
 
 const EBAY_API_BASE = 'https://api.ebay.com';
 
@@ -119,31 +120,80 @@ export async function searchEbayListings(
 
 /**
  * Fetch market data for an item, combining eBay active listings
- * with AI-estimated sold data
+ * with AI price triangulation for accurate sold price estimates
  */
 export async function fetchEbayMarketData(
   searchQuery: string,
+  itemName: string,
   aiEstimate?: { low: number; mid: number; high: number }
-): Promise<MarketData> {
+): Promise<MarketData & { triangulation?: TriangulatedPrice }> {
   try {
     console.log('Fetching eBay data for:', searchQuery);
     const { active, totalActive } = await searchEbayListings(searchQuery, { limit: 50 });
 
-    // Calculate active listing stats
+    // Calculate real eBay listing stats
     const activePrices = active.map(l => l.currentPrice).filter(p => p > 0);
     const avgActivePrice = activePrices.length > 0
       ? activePrices.reduce((a, b) => a + b, 0) / activePrices.length
-      : aiEstimate?.mid || 0;
+      : 0;
+    const minActivePrice = activePrices.length > 0 ? Math.min(...activePrices) : 0;
+    const maxActivePrice = activePrices.length > 0 ? Math.max(...activePrices) : 0;
 
-    // Generate estimated sold listings based on AI prices and active listing patterns
+    // Triangulate prices using AI + eBay data
+    let triangulatedPrices: TriangulatedPrice;
+
+    if (aiEstimate && aiEstimate.mid > 0) {
+      // We have both AI estimate and eBay data - triangulate them
+      console.log('Triangulating prices:', { aiEstimate, ebayAvg: avgActivePrice, listingCount: totalActive });
+
+      triangulatedPrices = await triangulatePrice(
+        itemName,
+        aiEstimate,
+        {
+          avgPrice: avgActivePrice,
+          minPrice: minActivePrice,
+          maxPrice: maxActivePrice,
+          listingCount: totalActive,
+        }
+      );
+
+      console.log('Triangulated result:', triangulatedPrices);
+    } else if (activePrices.length > 0) {
+      // Only eBay data available - apply asking-to-sold discount
+      const soldDiscount = 0.8; // 20% below asking prices
+      triangulatedPrices = {
+        low: minActivePrice * soldDiscount,
+        mid: avgActivePrice * soldDiscount,
+        high: maxActivePrice * 0.85,
+        confidence: totalActive >= 10 ? 0.7 : totalActive >= 5 ? 0.5 : 0.3,
+        dataQuality: totalActive >= 10 ? 'high' : totalActive >= 5 ? 'medium' : 'low',
+        reasoning: `Based on ${totalActive} eBay listings, adjusted -20% for asking vs sold prices`,
+        marketInsight: totalActive > 20 ? 'High supply market' : totalActive < 5 ? 'Limited market data' : 'Moderate market activity',
+        recommendation: 'maybe',
+      };
+    } else {
+      // No data at all - very conservative
+      triangulatedPrices = {
+        low: 5,
+        mid: 15,
+        high: 30,
+        confidence: 0.1,
+        dataQuality: 'low',
+        reasoning: 'No market data available - using very conservative estimates',
+        marketInsight: 'Unable to find comparable listings',
+        recommendation: 'pass',
+      };
+    }
+
+    // Generate estimated sold listings based on TRIANGULATED prices (not raw AI)
     const soldListings = generateEstimatedSoldListings(
-      aiEstimate?.mid || avgActivePrice,
-      aiEstimate?.low || avgActivePrice * 0.7,
-      aiEstimate?.high || avgActivePrice * 1.3,
+      triangulatedPrices.mid,
+      triangulatedPrices.low,
+      triangulatedPrices.high,
       searchQuery
     );
 
-    // Calculate summary stats
+    // Calculate summary stats from triangulated data
     const soldPrices = soldListings.map(l => l.soldPrice);
     const avgSoldPrice = soldPrices.reduce((a, b) => a + b, 0) / soldPrices.length;
     const sortedPrices = [...soldPrices].sort((a, b) => a - b);
@@ -152,27 +202,30 @@ export async function fetchEbayMarketData(
     const summary: MarketSummary = {
       avgSoldPrice: Math.round(avgSoldPrice * 100) / 100,
       medianSoldPrice: Math.round(medianSoldPrice * 100) / 100,
-      minSoldPrice: Math.min(...soldPrices),
-      maxSoldPrice: Math.max(...soldPrices),
+      minSoldPrice: Math.round(triangulatedPrices.low * 100) / 100,
+      maxSoldPrice: Math.round(triangulatedPrices.high * 100) / 100,
       totalSold30Days: Math.min(soldListings.length, 15),
       totalSold90Days: soldListings.length,
-      avgDaysToSell: calculateAvgDaysToSell(soldListings),
+      avgDaysToSell: calculateAvgDaysToSell(soldListings, totalActive),
       activeListingCount: totalActive,
       avgActivePrice: Math.round(avgActivePrice * 100) / 100,
       sellThroughRate: calculateSellThroughRate(soldListings.length, totalActive),
       priceVolatility: calculatePriceVolatility(soldPrices),
     };
 
-    console.log('eBay market data:', {
+    console.log('Final market data:', {
       activeListings: active.length,
       avgActivePrice,
-      estimatedMedianSold: medianSoldPrice,
+      triangulatedMid: triangulatedPrices.mid,
+      medianSoldPrice,
+      dataQuality: triangulatedPrices.dataQuality,
     });
 
     return {
       soldListings,
       activeListings: active,
       summary,
+      triangulation: triangulatedPrices,
     };
   } catch (error) {
     console.error('Error fetching eBay market data:', error);
@@ -228,15 +281,22 @@ function generateEstimatedSoldListings(
   return listings.sort((a, b) => b.soldDate.getTime() - a.soldDate.getTime());
 }
 
-function calculateAvgDaysToSell(listings: SoldListing[]): number {
+function calculateAvgDaysToSell(listings: SoldListing[], activeListingCount: number = 0): number {
   // Estimate avg days to sell based on price distribution and market activity
-  // More listings = faster sales, higher prices = slower sales
+  // More active listings = slower sales (more competition)
+  // Higher prices = slower sales
   if (listings.length === 0) return 7;
+
   const avgPrice = listings.reduce((sum, l) => sum + l.soldPrice, 0) / listings.length;
-  // Base estimate: 5-14 days, adjusted by volume
-  const volumeFactor = Math.min(1, listings.length / 20); // More volume = faster
-  const baseDays = 10 - (volumeFactor * 5); // 5-10 days base
-  return Math.round(baseDays + (avgPrice / 100)); // Add ~1 day per $100
+
+  // Base days: 5-14, adjusted by competition
+  const competitionFactor = Math.min(1, activeListingCount / 50); // More competition = slower
+  const baseDays = 5 + (competitionFactor * 9); // 5-14 days base
+
+  // Add time for higher prices
+  const priceFactor = Math.min(7, avgPrice / 50); // Add up to 7 days for expensive items
+
+  return Math.round(baseDays + priceFactor);
 }
 
 function calculateSellThroughRate(sold: number, active: number): number {
