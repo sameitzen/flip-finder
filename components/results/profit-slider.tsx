@@ -1,6 +1,7 @@
 'use client';
 
 import { Slider } from '@/components/ui/slider';
+import { Card, CardContent } from '@/components/ui/card';
 
 interface ProfitSliderProps {
   buyPrice: number;
@@ -27,13 +28,9 @@ export function ProfitSlider({
   };
 
   return (
-    <div className="fixed bottom-16 inset-x-0 z-40">
-      {/* Gradient fade from content to slider */}
-      <div className="h-6 bg-gradient-to-t from-background to-transparent pointer-events-none" />
-
-      {/* Slider container - solid background, anchored */}
-      <div className="bg-background border-t border-border/50 px-5 pb-3 pt-3 safe-bottom">
-        {/* Compact header */}
+    <Card className="border-border/50 bg-card/50">
+      <CardContent className="p-4">
+        {/* Header with label and value */}
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs text-muted-foreground uppercase tracking-wide">Buy Price</span>
           <span className="font-mono text-lg font-semibold tabular-nums">${buyPrice}</span>
@@ -49,12 +46,12 @@ export function ProfitSlider({
           className="[&_[role=slider]]:h-5 [&_[role=slider]]:w-5"
         />
 
-        {/* Min/max labels only */}
+        {/* Min/max labels */}
         <div className="flex justify-between text-[10px] text-muted-foreground/40 mt-1.5 px-0.5">
           <span>$0</span>
           <span>${maxPrice}</span>
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }

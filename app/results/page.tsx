@@ -233,7 +233,7 @@ export default function ResultsPage() {
     <div className="flex flex-col min-h-screen">
       <Header />
 
-      <main className="flex-1 overflow-y-auto p-4 space-y-4 pb-40">
+      <main className="flex-1 overflow-y-auto p-4 space-y-4 pb-4">
         {/* Item identification */}
         <ItemIdentification
           item={scanData.itemIdentity}
@@ -264,6 +264,15 @@ export default function ResultsPage() {
             effectiveMargin: 0,
           }}
           gradeOverrideExplanation={extendedVestScore.overrideExplanation}
+        />
+
+        {/* Buy Price Slider - inline below profit hero */}
+        <ProfitSlider
+          buyPrice={buyPrice}
+          onBuyPriceChange={setBuyPrice}
+          medianSoldPrice={scanData.marketData.summary.medianSoldPrice}
+          estimatedProfit={vestScore.estimatedProfit}
+          roi={vestScore.roi}
         />
 
         {/* Comps Gallery - Show actual eBay listings */}
@@ -312,15 +321,6 @@ export default function ResultsPage() {
           </Button>
         </div>
       </main>
-
-      {/* Fixed bottom slider - in thumb zone */}
-      <ProfitSlider
-        buyPrice={buyPrice}
-        onBuyPriceChange={setBuyPrice}
-        medianSoldPrice={scanData.marketData.summary.medianSoldPrice}
-        estimatedProfit={vestScore.estimatedProfit}
-        roi={vestScore.roi}
-      />
     </div>
   );
 }
