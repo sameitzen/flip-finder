@@ -1,9 +1,31 @@
 'use server';
 
 import { MarketData, SoldListing, ActiveListing, MarketSummary } from '@/lib/types';
-import { triangulatePrice, TriangulatedPrice } from './gemini';
 
 const EBAY_API_BASE = 'https://api.ebay.com';
+const EBAY_TIMEOUT_MS = 10000; // 10 second timeout for eBay calls
+
+// Triangulated price result type
+export interface TriangulatedPrice {
+  low: number;
+  mid: number;
+  high: number;
+  confidence: number;
+  dataQuality: 'high' | 'medium' | 'low';
+  reasoning: string;
+  marketInsight: string;
+  recommendation: 'buy' | 'maybe' | 'pass';
+}
+
+// Timeout helper
+function withTimeout<T>(promise: Promise<T>, ms: number, errorMsg: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(errorMsg)), ms)
+    ),
+  ]);
+}
 
 // Cache for OAuth token
 let cachedToken: { token: string; expiresAt: number } | null = null;
@@ -27,14 +49,18 @@ async function getEbayToken(): Promise<string> {
 
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
-  const response = await fetch(`${EBAY_API_BASE}/identity/v1/oauth2/token`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Authorization': `Basic ${credentials}`,
-    },
-    body: 'grant_type=client_credentials&scope=https://api.ebay.com/oauth/api_scope',
-  });
+  const response = await withTimeout(
+    fetch(`${EBAY_API_BASE}/identity/v1/oauth2/token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': `Basic ${credentials}`,
+      },
+      body: 'grant_type=client_credentials&scope=https://api.ebay.com/oauth/api_scope',
+    }),
+    EBAY_TIMEOUT_MS,
+    'eBay OAuth request timed out'
+  );
 
   if (!response.ok) {
     const error = await response.text();
@@ -84,15 +110,19 @@ export async function searchEbayListings(
     sort: 'price',
   });
 
-  const response = await fetch(
-    `${EBAY_API_BASE}/buy/browse/v1/item_summary/search?${searchParams}`,
-    {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
-        'Content-Type': 'application/json',
-      },
-    }
+  const response = await withTimeout(
+    fetch(
+      `${EBAY_API_BASE}/buy/browse/v1/item_summary/search?${searchParams}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
+          'Content-Type': 'application/json',
+        },
+      }
+    ),
+    EBAY_TIMEOUT_MS,
+    'eBay search request timed out'
   );
 
   if (!response.ok) {
@@ -119,12 +149,81 @@ export async function searchEbayListings(
 }
 
 /**
+ * Calculate triangulated price from AI estimate and eBay data
+ * Uses weighted average based on how much eBay data we have
+ */
+function calculateTriangulatedPrice(
+  aiEstimate: { low: number; mid: number; high: number },
+  ebayData: { avgPrice: number; minPrice: number; maxPrice: number; listingCount: number }
+): TriangulatedPrice {
+  // Weight eBay data based on listing count
+  let ebayWeight: number;
+  let dataQuality: 'high' | 'medium' | 'low';
+
+  if (ebayData.listingCount >= 10) {
+    ebayWeight = 0.75;
+    dataQuality = 'high';
+  } else if (ebayData.listingCount >= 5) {
+    ebayWeight = 0.5;
+    dataQuality = 'medium';
+  } else if (ebayData.listingCount >= 1) {
+    ebayWeight = 0.3;
+    dataQuality = 'low';
+  } else {
+    // No eBay data, use AI with discount for uncertainty
+    return {
+      low: aiEstimate.low * 0.8,
+      mid: aiEstimate.mid * 0.85,
+      high: aiEstimate.high * 0.9,
+      confidence: 0.4,
+      dataQuality: 'low',
+      reasoning: 'No eBay listings found - using AI estimate with conservative discount',
+      marketInsight: 'Limited market data available',
+      recommendation: 'maybe',
+    };
+  }
+
+  const aiWeight = 1 - ebayWeight;
+
+  // eBay shows asking prices, so apply 20% discount to estimate sold prices
+  const ebayAdjusted = {
+    low: ebayData.minPrice * 0.8,
+    mid: ebayData.avgPrice * 0.8,
+    high: ebayData.maxPrice * 0.85,
+  };
+
+  // Weighted combination
+  const finalLow = (aiEstimate.low * aiWeight) + (ebayAdjusted.low * ebayWeight);
+  const finalMid = (aiEstimate.mid * aiWeight) + (ebayAdjusted.mid * ebayWeight);
+  const finalHigh = (aiEstimate.high * aiWeight) + (ebayAdjusted.high * ebayWeight);
+
+  // Determine recommendation based on data quality
+  let recommendation: 'buy' | 'maybe' | 'pass' = 'maybe';
+  if (dataQuality === 'high' && ebayData.listingCount > 15) {
+    recommendation = 'buy'; // Good data confidence
+  } else if (ebayData.listingCount < 3) {
+    recommendation = 'pass'; // Too risky with little data
+  }
+
+  return {
+    low: Math.round(finalLow * 100) / 100,
+    mid: Math.round(finalMid * 100) / 100,
+    high: Math.round(finalHigh * 100) / 100,
+    confidence: ebayWeight + 0.2,
+    dataQuality,
+    reasoning: `Weighted ${Math.round(ebayWeight * 100)}% eBay (${ebayData.listingCount} listings), ${Math.round(aiWeight * 100)}% AI. eBay prices adjusted -20% for asking vs sold.`,
+    marketInsight: ebayData.listingCount > 20 ? 'High supply - competitive market' : ebayData.listingCount < 5 ? 'Low supply - limited data' : 'Moderate market activity',
+    recommendation,
+  };
+}
+
+/**
  * Fetch market data for an item, combining eBay active listings
  * with AI price triangulation for accurate sold price estimates
  */
 export async function fetchEbayMarketData(
   searchQuery: string,
-  itemName: string,
+  _itemName: string, // Kept for API compatibility, not currently used
   aiEstimate?: { low: number; mid: number; high: number }
 ): Promise<MarketData & { triangulation?: TriangulatedPrice }> {
   try {
@@ -143,11 +242,10 @@ export async function fetchEbayMarketData(
     let triangulatedPrices: TriangulatedPrice;
 
     if (aiEstimate && aiEstimate.mid > 0) {
-      // We have both AI estimate and eBay data - triangulate them
+      // We have both AI estimate and eBay data - triangulate them using weighted average
       console.log('Triangulating prices:', { aiEstimate, ebayAvg: avgActivePrice, listingCount: totalActive });
 
-      triangulatedPrices = await triangulatePrice(
-        itemName,
+      triangulatedPrices = calculateTriangulatedPrice(
         aiEstimate,
         {
           avgPrice: avgActivePrice,
