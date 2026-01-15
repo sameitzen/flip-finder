@@ -22,10 +22,25 @@ interface CameraViewfinderProps {
 
 const MAX_DIMENSION = 1024;
 const JPEG_QUALITY = 0.7;
+const MAX_FILE_SIZE_MB = 15;
+
+/**
+ * Check if a file is HEIC/HEIF format (not supported in browser)
+ */
+const isHeicFormat = (file: File): boolean => {
+  const type = file.type.toLowerCase();
+  const name = file.name.toLowerCase();
+  return (
+    type === 'image/heic' ||
+    type === 'image/heif' ||
+    name.endsWith('.heic') ||
+    name.endsWith('.heif')
+  );
+};
 
 /**
  * Compress and resize an image file to reduce upload size
- * Handles various image formats including HEIC from iOS
+ * Note: HEIC/HEIF formats are not supported in browsers and must be rejected upfront
  */
 const compressImage = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -174,13 +189,35 @@ export function CameraViewfinder({
 
     // Handle multiple file selection with compression
     const filesToProcess = Math.min(files.length, MAX_PHOTOS - capturedPhotos.length);
+    let hasError = false;
 
     for (let i = 0; i < filesToProcess; i++) {
       const file = files[i];
-      console.log(`File ${i + 1}: ${file.name}, type: ${file.type}, size: ${Math.round(file.size / 1024)}KB`);
+      const fileSizeMB = file.size / (1024 * 1024);
+      console.log(`File ${i + 1}: ${file.name}, type: ${file.type}, size: ${fileSizeMB.toFixed(1)}MB`);
 
-      // Accept any image type (iOS sometimes reports empty type)
-      if (file.type.startsWith('image/') || file.type === '' || file.name.match(/\.(jpg|jpeg|png|gif|webp|heic|heif)$/i)) {
+      // Check for HEIC format first - not supported in browsers
+      if (isHeicFormat(file)) {
+        console.log(`HEIC format detected: ${file.name}`);
+        if (onImageError && !hasError) {
+          hasError = true;
+          onImageError('HEIC photos are not supported. Please use the camera button to take a photo, or convert your image to JPEG first.');
+        }
+        continue;
+      }
+
+      // Check file size
+      if (fileSizeMB > MAX_FILE_SIZE_MB) {
+        console.log(`File too large: ${fileSizeMB.toFixed(1)}MB`);
+        if (onImageError && !hasError) {
+          hasError = true;
+          onImageError(`Image is too large (${fileSizeMB.toFixed(0)}MB). Please use a smaller image.`);
+        }
+        continue;
+      }
+
+      // Accept any image type (iOS sometimes reports empty type for non-HEIC)
+      if (file.type.startsWith('image/') || file.type === '' || file.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
         try {
           const base64 = await compressImage(file);
           onAddPhoto(base64);
@@ -188,8 +225,9 @@ export function CameraViewfinder({
         } catch (err) {
           console.error(`Failed to process file ${i + 1}:`, err);
           // Report error to parent for graceful handling
-          if (onImageError) {
-            onImageError('Could not load image. Try describing the item instead.');
+          if (onImageError && !hasError) {
+            hasError = true;
+            onImageError('Could not load image. Please try a different photo or use the camera.');
           }
         }
       } else {
@@ -343,9 +381,8 @@ export function CameraViewfinder({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*,image/heic,image/heif"
+                accept="image/jpeg,image/png,image/gif,image/webp"
                 multiple
-                capture={false as unknown as boolean | 'user' | 'environment'}
                 onChange={handleFileSelect}
                 className="hidden"
               />

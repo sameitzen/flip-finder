@@ -67,12 +67,21 @@ export default function Home() {
 
       if (result.success) {
         // Store result in sessionStorage for the results page
-        sessionStorage.setItem('currentScan', JSON.stringify({
+        const scanData = {
           ...result.data,
           imageBase64: images[0], // Primary image
           images, // All images
           timestamp: Date.now(),
-        }));
+        };
+
+        try {
+          sessionStorage.setItem('currentScan', JSON.stringify(scanData));
+        } catch (storageError) {
+          // iOS private browsing or quota exceeded
+          console.error('SessionStorage error:', storageError);
+          // Store in window as fallback
+          (window as Window & { __flipFinderScan?: typeof scanData }).__flipFinderScan = scanData;
+        }
 
         router.push('/results');
       } else {
@@ -120,12 +129,19 @@ export default function Home() {
       );
 
       if (result.success) {
-        sessionStorage.setItem('currentScan', JSON.stringify({
+        const scanData = {
           ...result.data,
           imageBase64: capturedPhotos[0] || '',
           images: capturedPhotos,
           timestamp: Date.now(),
-        }));
+        };
+
+        try {
+          sessionStorage.setItem('currentScan', JSON.stringify(scanData));
+        } catch (storageError) {
+          console.error('SessionStorage error:', storageError);
+          (window as Window & { __flipFinderScan?: typeof scanData }).__flipFinderScan = scanData;
+        }
 
         router.push('/results');
       } else {

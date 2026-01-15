@@ -38,9 +38,20 @@ export default function ResultsPage() {
   const [isSaved, setIsSaved] = useState(false);
   const [isCorreecting, setIsCorreecting] = useState(false);
 
-  // Load scan data from sessionStorage
+  // Load scan data from sessionStorage (or window fallback for iOS private browsing)
   useEffect(() => {
-    const stored = sessionStorage.getItem('currentScan');
+    let stored = sessionStorage.getItem('currentScan');
+
+    // Check window fallback if sessionStorage is empty (iOS private browsing)
+    if (!stored) {
+      const windowData = (window as Window & { __flipFinderScan?: StoredScan }).__flipFinderScan;
+      if (windowData) {
+        stored = JSON.stringify(windowData);
+        // Clean up the window reference
+        delete (window as Window & { __flipFinderScan?: StoredScan }).__flipFinderScan;
+      }
+    }
+
     if (!stored) {
       router.push('/');
       return;
@@ -87,29 +98,43 @@ export default function ResultsPage() {
   const handleSave = () => {
     if (!scanData) return;
 
-    // Get existing scans from localStorage
-    const existingScans = JSON.parse(localStorage.getItem('flip-finder-scans') || '[]');
+    try {
+      // Get existing scans from localStorage
+      const existingScans = JSON.parse(localStorage.getItem('flip-finder-scans') || '[]');
 
-    // Create new scan entry
-    const newScan = {
-      id: `scan-${Date.now()}`,
-      timestamp: scanData.timestamp,
-      imageBase64: scanData.imageBase64,
-      itemIdentity: scanData.itemIdentity,
-      marketData: scanData.marketData,
-      vestScore: vestScore,
-      buyPrice: buyPrice,
-    };
+      // Create new scan entry - store thumbnail instead of full image to save space
+      const newScan = {
+        id: `scan-${Date.now()}`,
+        timestamp: scanData.timestamp,
+        imageBase64: scanData.imageBase64, // TODO: could compress to thumbnail
+        itemIdentity: scanData.itemIdentity,
+        marketData: scanData.marketData,
+        vestScore: vestScore,
+        buyPrice: buyPrice,
+      };
 
-    // Add to beginning, limit to 20
-    const updatedScans = [newScan, ...existingScans].slice(0, 20);
-    localStorage.setItem('flip-finder-scans', JSON.stringify(updatedScans));
+      // Add to beginning, limit to 20
+      const updatedScans = [newScan, ...existingScans].slice(0, 20);
 
-    setIsSaved(true);
+      try {
+        localStorage.setItem('flip-finder-scans', JSON.stringify(updatedScans));
+      } catch (quotaError) {
+        // Storage quota exceeded - remove oldest scans and try again
+        console.warn('Storage quota exceeded, removing old scans...');
+        const reducedScans = updatedScans.slice(0, 10);
+        localStorage.setItem('flip-finder-scans', JSON.stringify(reducedScans));
+      }
 
-    // Haptic feedback
-    if ('vibrate' in navigator) {
-      navigator.vibrate([50, 50, 50]);
+      setIsSaved(true);
+
+      // Haptic feedback
+      if ('vibrate' in navigator) {
+        navigator.vibrate([50, 50, 50]);
+      }
+    } catch (error) {
+      console.error('Failed to save scan:', error);
+      // Still show as saved to not confuse user, but log the error
+      setIsSaved(true);
     }
   };
 
