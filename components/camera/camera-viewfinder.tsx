@@ -24,56 +24,120 @@ const JPEG_QUALITY = 0.7;
 
 /**
  * Compress and resize an image file to reduce upload size
+ * Handles various image formats including HEIC from iOS
  */
 const compressImage = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-
-    img.onload = () => {
-      if (!ctx) {
-        reject(new Error('Could not get canvas context'));
-        return;
-      }
-
-      let { width, height } = img;
-
-      // Scale down if larger than max dimension
-      if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
-        if (width > height) {
-          height = Math.round((height / width) * MAX_DIMENSION);
-          width = MAX_DIMENSION;
-        } else {
-          width = Math.round((width / height) * MAX_DIMENSION);
-          height = MAX_DIMENSION;
-        }
-      }
-
-      canvas.width = width;
-      canvas.height = height;
-
-      // Draw scaled image
-      ctx.drawImage(img, 0, 0, width, height);
-
-      // Convert to compressed JPEG
-      const base64 = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
-
-      // Log size for debugging
-      const sizeKB = Math.round(base64.length * 0.75 / 1024);
-      console.log(`Compressed uploaded image: ${width}x${height}, ~${sizeKB}KB`);
-
-      resolve(base64);
-    };
-
-    img.onerror = () => reject(new Error('Failed to load image'));
-
-    // Read file as data URL to load into Image
+    // First read the file as a data URL
     const reader = new FileReader();
+
     reader.onload = () => {
-      img.src = reader.result as string;
+      const dataUrl = reader.result as string;
+
+      // Create blob URL as fallback for formats that may not load directly
+      const blob = new Blob([file], { type: file.type });
+      const blobUrl = URL.createObjectURL(blob);
+
+      const img = new Image();
+
+      // Clean up blob URL after use
+      const cleanup = () => {
+        URL.revokeObjectURL(blobUrl);
+      };
+
+      img.onload = () => {
+        cleanup();
+
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+
+        if (!ctx) {
+          reject(new Error('Could not get canvas context'));
+          return;
+        }
+
+        let { width, height } = img;
+
+        // Scale down if larger than max dimension
+        if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+          if (width > height) {
+            height = Math.round((height / width) * MAX_DIMENSION);
+            width = MAX_DIMENSION;
+          } else {
+            width = Math.round((width / height) * MAX_DIMENSION);
+            height = MAX_DIMENSION;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        // Draw scaled image
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Convert to compressed JPEG
+        const base64 = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+
+        // Log size for debugging
+        const sizeKB = Math.round(base64.length * 0.75 / 1024);
+        console.log(`Compressed uploaded image: ${width}x${height}, ~${sizeKB}KB`);
+
+        resolve(base64);
+      };
+
+      img.onerror = () => {
+        // If data URL failed, try blob URL (helps with some formats)
+        console.log('Data URL load failed, trying blob URL...');
+        img.onload = () => {
+          cleanup();
+
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+
+          if (!ctx) {
+            reject(new Error('Could not get canvas context'));
+            return;
+          }
+
+          let { width, height } = img;
+
+          if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+            if (width > height) {
+              height = Math.round((height / width) * MAX_DIMENSION);
+              width = MAX_DIMENSION;
+            } else {
+              width = Math.round((width / height) * MAX_DIMENSION);
+              height = MAX_DIMENSION;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          ctx.drawImage(img, 0, 0, width, height);
+
+          const base64 = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+          const sizeKB = Math.round(base64.length * 0.75 / 1024);
+          console.log(`Compressed uploaded image (via blob): ${width}x${height}, ~${sizeKB}KB`);
+
+          resolve(base64);
+        };
+
+        img.onerror = () => {
+          cleanup();
+          reject(new Error('Failed to load image - format may not be supported'));
+        };
+
+        img.src = blobUrl;
+      };
+
+      // Try loading from data URL first
+      img.src = dataUrl;
     };
-    reader.onerror = reject;
+
+    reader.onerror = () => {
+      reject(new Error('Failed to read file'));
+    };
+
     reader.readAsDataURL(file);
   });
 };
@@ -104,16 +168,27 @@ export function CameraViewfinder({
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
+    console.log(`Processing ${files.length} file(s)...`);
+
     // Handle multiple file selection with compression
-    for (let i = 0; i < Math.min(files.length, MAX_PHOTOS - capturedPhotos.length); i++) {
+    const filesToProcess = Math.min(files.length, MAX_PHOTOS - capturedPhotos.length);
+
+    for (let i = 0; i < filesToProcess; i++) {
       const file = files[i];
-      if (file.type.startsWith('image/')) {
+      console.log(`File ${i + 1}: ${file.name}, type: ${file.type}, size: ${Math.round(file.size / 1024)}KB`);
+
+      // Accept any image type (iOS sometimes reports empty type)
+      if (file.type.startsWith('image/') || file.type === '' || file.name.match(/\.(jpg|jpeg|png|gif|webp|heic|heif)$/i)) {
         try {
           const base64 = await compressImage(file);
           onAddPhoto(base64);
+          console.log(`Successfully processed file ${i + 1}`);
         } catch (err) {
-          console.error('Failed to compress image:', err);
+          console.error(`Failed to process file ${i + 1}:`, err);
+          // Continue with other files even if one fails
         }
+      } else {
+        console.log(`Skipping non-image file: ${file.type}`);
       }
     }
 
@@ -263,8 +338,9 @@ export function CameraViewfinder({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,image/heic,image/heif"
                 multiple
+                capture={false as unknown as boolean | 'user' | 'environment'}
                 onChange={handleFileSelect}
                 className="hidden"
               />
