@@ -325,6 +325,16 @@ export function CameraViewfinder({
 
   return (
     <div className="relative flex flex-col flex-1 bg-black">
+      {/* Hidden file input - always in DOM for reliable triggering */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={handleFileSelect}
+        className="hidden"
+      />
+
       {/* Video feed container with border */}
       <div className="relative flex-1 overflow-hidden m-3 rounded-2xl">
         {/* Outer glow border */}
@@ -430,24 +440,14 @@ export function CameraViewfinder({
 
           {/* Gallery upload button */}
           {status === 'active' && !isProcessing && capturedPhotos.length < MAX_PHOTOS && (
-            <>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={handleFileSelect}
-                className="hidden"
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => fileInputRef.current?.click()}
-                className="absolute bottom-3 left-3 bg-black/40 hover:bg-black/60 text-white rounded-full backdrop-blur-sm"
-              >
-                <ImageIcon className="w-5 h-5" />
-              </Button>
-            </>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => fileInputRef.current?.click()}
+              className="absolute bottom-3 left-3 bg-black/40 hover:bg-black/60 text-white rounded-full backdrop-blur-sm"
+            >
+              <ImageIcon className="w-5 h-5" />
+            </Button>
           )}
 
           {/* Photo tray - shows captured photos */}
