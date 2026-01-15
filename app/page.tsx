@@ -8,6 +8,23 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AlertCircle, X, RefreshCw, Send } from 'lucide-react';
 
+// Client-side timeout for the entire scan operation
+const SCAN_TIMEOUT_MS = 45000; // 45 seconds
+
+// Wrap a promise with a timeout
+function withClientTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  errorMessage: string
+): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(errorMessage)), ms)
+    ),
+  ]);
+}
+
 export default function Home() {
   const router = useRouter();
   const [isProcessing, setIsProcessing] = useState(false);
@@ -21,26 +38,44 @@ export default function Home() {
     setError(null);
     setCapturedImage(imageBase64);
 
-    const result = await scanItem(imageBase64);
+    try {
+      // Wrap the scan with a client-side timeout
+      const result = await withClientTimeout(
+        scanItem(imageBase64),
+        SCAN_TIMEOUT_MS,
+        'Request took too long. Please try again.'
+      );
 
-    if (result.success) {
-      // Store result in sessionStorage for the results page
-      sessionStorage.setItem('currentScan', JSON.stringify({
-        ...result.data,
-        imageBase64,
-        timestamp: Date.now(),
-      }));
+      if (result.success) {
+        // Store result in sessionStorage for the results page
+        sessionStorage.setItem('currentScan', JSON.stringify({
+          ...result.data,
+          imageBase64,
+          timestamp: Date.now(),
+        }));
 
-      router.push('/results');
-    } else {
-      console.error('Scan failed:', result.error);
-      setError(result.error);
-      setIsProcessing(false);
+        router.push('/results');
+      } else {
+        console.error('Scan failed:', result.error);
+        setError(result.error);
+        setIsProcessing(false);
 
-      // If the error suggests text input, show the text input field
-      if (result.error.suggestTextInput) {
-        setShowTextInput(true);
+        // If the error suggests text input, show the text input field
+        if (result.error.suggestTextInput) {
+          setShowTextInput(true);
+        }
       }
+    } catch (err) {
+      // Handle timeout or unexpected errors
+      console.error('Scan error:', err);
+      const message = err instanceof Error ? err.message : 'Something went wrong. Please try again.';
+      setError({
+        message,
+        code: 'TIMEOUT',
+        retryable: true,
+        suggestTextInput: true,
+      });
+      setIsProcessing(false);
     }
   };
 
@@ -57,18 +92,34 @@ export default function Home() {
     setIsProcessing(true);
     setError(null);
 
-    const result = await identifyFromText(textDescription.trim());
+    try {
+      const result = await withClientTimeout(
+        identifyFromText(textDescription.trim()),
+        SCAN_TIMEOUT_MS,
+        'Request took too long. Please try again.'
+      );
 
-    if (result.success) {
-      sessionStorage.setItem('currentScan', JSON.stringify({
-        ...result.data,
-        imageBase64: capturedImage || '',
-        timestamp: Date.now(),
-      }));
+      if (result.success) {
+        sessionStorage.setItem('currentScan', JSON.stringify({
+          ...result.data,
+          imageBase64: capturedImage || '',
+          timestamp: Date.now(),
+        }));
 
-      router.push('/results');
-    } else {
-      setError(result.error);
+        router.push('/results');
+      } else {
+        setError(result.error);
+        setIsProcessing(false);
+      }
+    } catch (err) {
+      console.error('Text identification error:', err);
+      const message = err instanceof Error ? err.message : 'Something went wrong. Please try again.';
+      setError({
+        message,
+        code: 'TIMEOUT',
+        retryable: true,
+        suggestTextInput: false,
+      });
       setIsProcessing(false);
     }
   };
