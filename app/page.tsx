@@ -206,9 +206,10 @@ export default function Home() {
                 <div className="flex gap-2">
                   <Input
                     value={textDescription}
-                    onChange={(e) => setTextDescription(e.target.value)}
+                    onChange={(e) => setTextDescription(e.target.value.slice(0, 200))}
                     placeholder="e.g., Vintage Pendleton wool blanket"
                     className="flex-1"
+                    maxLength={200}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && textDescription.trim()) {
                         handleTextSubmit();

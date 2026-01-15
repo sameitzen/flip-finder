@@ -119,8 +119,20 @@ export function useCamera(): UseCameraReturn {
 
       if (!mountedRef.current) return;
 
-      // Play the video
-      await video.play();
+      // Play the video with error handling for iOS/Safari autoplay restrictions
+      try {
+        await video.play();
+      } catch (playError) {
+        // AbortError is common when video is interrupted - often safe to ignore
+        if (playError instanceof Error && playError.name === 'AbortError') {
+          console.log('Video play aborted (likely page transition or camera switch)');
+          // Still set to active as the stream is valid
+        } else {
+          // NotAllowedError means autoplay was blocked - video element still works
+          console.warn('Video play error:', playError);
+          // Don't throw - the video element is still functional, user can tap to play
+        }
+      }
 
       if (!mountedRef.current) return;
 

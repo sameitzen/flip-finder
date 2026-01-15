@@ -15,11 +15,62 @@ import {
   AISignals,
 } from '@/components/results';
 import { Button } from '@/components/ui/button';
-import { Save, RotateCcw } from 'lucide-react';
-import { SearchMetadata } from '@/lib/api/ebay';
+import { Save, RotateCcw, AlertTriangle } from 'lucide-react';
+import { SearchMetadata, TriangulatedPrice } from '@/lib/api/ebay';
 
 interface ExtendedMarketData extends MarketData {
   searchMeta?: SearchMetadata;
+  triangulation?: TriangulatedPrice;
+}
+
+/**
+ * Create a small thumbnail from a base64 image for storage efficiency
+ * Reduces ~500KB images to ~10-20KB thumbnails
+ */
+function createThumbnail(base64: string, maxSize = 150): Promise<string> {
+  return new Promise((resolve) => {
+    // If already very small or empty, return as-is
+    if (!base64 || base64.length < 10000) {
+      resolve(base64);
+      return;
+    }
+
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+
+      if (!ctx) {
+        resolve(base64); // Fallback to original
+        return;
+      }
+
+      // Calculate scaled dimensions
+      let { width, height } = img;
+      if (width > height) {
+        height = Math.round((height / width) * maxSize);
+        width = maxSize;
+      } else {
+        width = Math.round((width / height) * maxSize);
+        height = maxSize;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // Lower quality for thumbnails
+      const thumbnail = canvas.toDataURL('image/jpeg', 0.6);
+      console.log(`Thumbnail created: ${Math.round(thumbnail.length / 1024)}KB (from ${Math.round(base64.length / 1024)}KB)`);
+      resolve(thumbnail);
+    };
+
+    img.onerror = () => {
+      resolve(base64); // Fallback to original
+    };
+
+    img.src = base64;
+  });
 }
 
 interface StoredScan {
@@ -95,20 +146,30 @@ export default function ResultsPage() {
     buyPrice
   );
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!scanData) return;
 
     try {
       // Get existing scans from localStorage
       const existingScans = JSON.parse(localStorage.getItem('flip-finder-scans') || '[]');
 
-      // Create new scan entry - store thumbnail instead of full image to save space
+      // Create thumbnail for storage efficiency
+      const thumbnail = await createThumbnail(scanData.imageBase64);
+
+      // Create new scan entry with thumbnail instead of full image
       const newScan = {
         id: `scan-${Date.now()}`,
         timestamp: scanData.timestamp,
-        imageBase64: scanData.imageBase64, // TODO: could compress to thumbnail
+        imageBase64: thumbnail, // Use thumbnail to save ~90% storage
         itemIdentity: scanData.itemIdentity,
-        marketData: scanData.marketData,
+        marketData: {
+          ...scanData.marketData,
+          // Strip eBay image URLs from stored listings to save space
+          activeListings: scanData.marketData.activeListings.map(l => ({
+            ...l,
+            imageUrl: undefined,
+          })),
+        },
         vestScore: vestScore,
         buyPrice: buyPrice,
       };
@@ -217,6 +278,18 @@ export default function ResultsPage() {
           onCorrect={handleCorrection}
           isCorreecting={isCorreecting}
         />
+
+        {/* Data quality warning - show when eBay data is limited */}
+        {scanData.marketData.activeListings.length < 5 && (
+          <div className="flex items-start gap-2 px-3 py-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-sm">
+            <AlertTriangle className="w-4 h-4 text-yellow-500 flex-shrink-0 mt-0.5" />
+            <p className="text-yellow-200/80">
+              {scanData.marketData.activeListings.length === 0
+                ? 'No eBay listings found. Prices are AI estimates only.'
+                : `Only ${scanData.marketData.activeListings.length} eBay listing${scanData.marketData.activeListings.length === 1 ? '' : 's'} found. Prices may be less accurate.`}
+            </p>
+          </div>
+        )}
 
         {/* Profit Hero - Net profit as the main focus */}
         <ProfitHero

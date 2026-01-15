@@ -1,13 +1,23 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useCamera } from '@/hooks/use-camera';
 import { CaptureButton } from './capture-button';
 import { PhotoTray } from './photo-tray';
 import { CameraPermissions } from './camera-permissions';
-import { Camera, RefreshCw, Image as ImageIcon } from 'lucide-react';
+import { Camera, RefreshCw, Image as ImageIcon, Sparkles, Search, Calculator } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+
+// Processing stages for the animated indicator
+const PROCESSING_STAGES = [
+  { icon: Sparkles, label: 'Identifying item...' },
+  { icon: Search, label: 'Finding eBay comps...' },
+  { icon: Calculator, label: 'Calculating V.E.S.T. score...' },
+];
+
+// Stage timing (ms) - roughly matches actual processing
+const STAGE_DURATION = 4000;
 
 const MAX_PHOTOS = 4;
 
@@ -177,6 +187,23 @@ export function CameraViewfinder({
 
   const hasStartedRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [processingStage, setProcessingStage] = useState(0);
+
+  // Animate through processing stages when isProcessing is true
+  useEffect(() => {
+    if (!isProcessing) {
+      setProcessingStage(0);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setProcessingStage((prev) =>
+        prev < PROCESSING_STAGES.length - 1 ? prev + 1 : prev
+      );
+    }, STAGE_DURATION);
+
+    return () => clearInterval(interval);
+  }, [isProcessing]);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -316,7 +343,7 @@ export function CameraViewfinder({
             autoPlay
             playsInline
             muted
-            webkit-playsinline="true"
+            {...{ 'webkit-playsinline': 'true' }}
             className={cn(
               'absolute inset-0 w-full h-full object-cover transition-all duration-300',
               isProcessing && 'brightness-75'
@@ -355,6 +382,23 @@ export function CameraViewfinder({
                 <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-primary rounded-tr-lg animate-pulse" />
                 <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-primary rounded-bl-lg animate-pulse" />
                 <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-primary rounded-br-lg animate-pulse" />
+              </div>
+
+              {/* Processing stage indicator */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="bg-black/70 backdrop-blur-sm rounded-xl px-4 py-3 flex items-center gap-3">
+                  {(() => {
+                    const CurrentIcon = PROCESSING_STAGES[processingStage].icon;
+                    return (
+                      <>
+                        <CurrentIcon className="w-5 h-5 text-primary animate-pulse" />
+                        <span className="text-sm text-white font-medium">
+                          {PROCESSING_STAGES[processingStage].label}
+                        </span>
+                      </>
+                    );
+                  })()}
+                </div>
               </div>
             </div>
           )}

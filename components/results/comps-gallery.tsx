@@ -105,6 +105,7 @@ export function CompsGallery({
                       <img
                         src={listing.imageUrl}
                         alt={listing.title}
+                        loading="lazy"
                         className="w-full h-full object-cover"
                       />
                     ) : (
