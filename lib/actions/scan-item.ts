@@ -26,8 +26,12 @@ export async function scanItem(imageBase64: string | string[]): Promise<ScanResp
   let itemIdentity: ItemIdentity;
 
   const hasApiKey = !!process.env.GOOGLE_AI_API_KEY;
-  const imageCount = Array.isArray(imageBase64) ? imageBase64.length : 1;
-  console.log('Gemini API key present:', hasApiKey, '| Images:', imageCount);
+  const images = Array.isArray(imageBase64) ? imageBase64 : [imageBase64];
+  const imageCount = images.length;
+
+  // Log image sizes for debugging
+  const imageSizes = images.map(img => Math.round(img.length / 1024));
+  console.log('Gemini API key present:', hasApiKey, '| Images:', imageCount, '| Sizes (KB):', imageSizes);
 
   if (hasApiKey) {
     try {
