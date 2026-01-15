@@ -41,6 +41,16 @@ export default function Home() {
     setCapturedPhotos(prev => prev.filter((_, i) => i !== index));
   };
 
+  const handleImageError = (message: string) => {
+    setError({
+      message,
+      code: 'IMAGE_LOAD_ERROR',
+      retryable: true,
+      suggestTextInput: true,
+    });
+    setShowTextInput(true);
+  };
+
   const handleAnalyze = async (images: string[]) => {
     if (images.length === 0) return;
 
@@ -148,6 +158,7 @@ export default function Home() {
         capturedPhotos={capturedPhotos}
         onAddPhoto={handleAddPhoto}
         onRemovePhoto={handleRemovePhoto}
+        onImageError={handleImageError}
       />
 
       {/* Error overlay */}

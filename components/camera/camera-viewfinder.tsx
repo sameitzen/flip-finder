@@ -17,6 +17,7 @@ interface CameraViewfinderProps {
   capturedPhotos: string[];
   onAddPhoto: (imageBase64: string) => void;
   onRemovePhoto: (index: number) => void;
+  onImageError?: (message: string) => void;
 }
 
 const MAX_DIMENSION = 1024;
@@ -148,6 +149,7 @@ export function CameraViewfinder({
   capturedPhotos,
   onAddPhoto,
   onRemovePhoto,
+  onImageError,
 }: CameraViewfinderProps) {
   const {
     videoRef,
@@ -185,7 +187,10 @@ export function CameraViewfinder({
           console.log(`Successfully processed file ${i + 1}`);
         } catch (err) {
           console.error(`Failed to process file ${i + 1}:`, err);
-          // Continue with other files even if one fails
+          // Report error to parent for graceful handling
+          if (onImageError) {
+            onImageError('Could not load image. Try describing the item instead.');
+          }
         }
       } else {
         console.log(`Skipping non-image file: ${file.type}`);
