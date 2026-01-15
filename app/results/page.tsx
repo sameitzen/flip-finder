@@ -298,8 +298,11 @@ export default function ResultsPage() {
           />
         )}
 
-        {/* Market data */}
-        <MarketDataPanel summary={scanData.marketData.summary} />
+        {/* Market data - only shows real eBay data + MSRP */}
+        <MarketDataPanel
+          summary={scanData.marketData.summary}
+          aiEstimate={scanData.itemIdentity.priceEstimate}
+        />
 
         {/* Action buttons */}
         <div className="flex gap-3 pt-2">
