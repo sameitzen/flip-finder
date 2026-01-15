@@ -19,10 +19,60 @@ interface CameraViewfinderProps {
   onRemovePhoto: (index: number) => void;
 }
 
-const fileToBase64 = (file: File): Promise<string> => {
+const MAX_DIMENSION = 1024;
+const JPEG_QUALITY = 0.7;
+
+/**
+ * Compress and resize an image file to reduce upload size
+ */
+const compressImage = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
+    const img = new Image();
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    img.onload = () => {
+      if (!ctx) {
+        reject(new Error('Could not get canvas context'));
+        return;
+      }
+
+      let { width, height } = img;
+
+      // Scale down if larger than max dimension
+      if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+        if (width > height) {
+          height = Math.round((height / width) * MAX_DIMENSION);
+          width = MAX_DIMENSION;
+        } else {
+          width = Math.round((width / height) * MAX_DIMENSION);
+          height = MAX_DIMENSION;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+
+      // Draw scaled image
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // Convert to compressed JPEG
+      const base64 = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+
+      // Log size for debugging
+      const sizeKB = Math.round(base64.length * 0.75 / 1024);
+      console.log(`Compressed uploaded image: ${width}x${height}, ~${sizeKB}KB`);
+
+      resolve(base64);
+    };
+
+    img.onerror = () => reject(new Error('Failed to load image'));
+
+    // Read file as data URL to load into Image
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
+    reader.onload = () => {
+      img.src = reader.result as string;
+    };
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
@@ -54,12 +104,16 @@ export function CameraViewfinder({
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    // Handle multiple file selection
+    // Handle multiple file selection with compression
     for (let i = 0; i < Math.min(files.length, MAX_PHOTOS - capturedPhotos.length); i++) {
       const file = files[i];
       if (file.type.startsWith('image/')) {
-        const base64 = await fileToBase64(file);
-        onAddPhoto(base64);
+        try {
+          const base64 = await compressImage(file);
+          onAddPhoto(base64);
+        } catch (err) {
+          console.error('Failed to compress image:', err);
+        }
       }
     }
 

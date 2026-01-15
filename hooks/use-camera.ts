@@ -170,15 +170,39 @@ export function useCamera(): UseCameraReturn {
       return null;
     }
 
-    // Set canvas size to video dimensions
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    // Target max dimension for uploads (keeps file size reasonable)
+    const MAX_DIMENSION = 1024;
 
-    // Draw the current frame
-    ctx.drawImage(video, 0, 0);
+    const videoWidth = video.videoWidth;
+    const videoHeight = video.videoHeight;
 
-    // Compress and return as base64
-    const base64 = canvas.toDataURL('image/jpeg', 0.8);
+    // Calculate scaled dimensions while maintaining aspect ratio
+    let targetWidth = videoWidth;
+    let targetHeight = videoHeight;
+
+    if (videoWidth > MAX_DIMENSION || videoHeight > MAX_DIMENSION) {
+      if (videoWidth > videoHeight) {
+        targetWidth = MAX_DIMENSION;
+        targetHeight = Math.round((videoHeight / videoWidth) * MAX_DIMENSION);
+      } else {
+        targetHeight = MAX_DIMENSION;
+        targetWidth = Math.round((videoWidth / videoHeight) * MAX_DIMENSION);
+      }
+    }
+
+    // Set canvas to target size (smaller than original)
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+
+    // Draw scaled image
+    ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
+
+    // Compress with lower quality for smaller file size
+    const base64 = canvas.toDataURL('image/jpeg', 0.7);
+
+    // Log size for debugging
+    const sizeKB = Math.round(base64.length * 0.75 / 1024);
+    console.log(`Captured image: ${targetWidth}x${targetHeight}, ~${sizeKB}KB`);
 
     // Trigger haptic feedback if available
     if ('vibrate' in navigator) {
