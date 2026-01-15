@@ -44,35 +44,41 @@ const isHeicFormat = (file: File): boolean => {
  */
 const compressImage = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
-    // First read the file as a data URL
-    const reader = new FileReader();
+    // Set a timeout for the entire operation (10 seconds)
+    const timeoutId = setTimeout(() => {
+      reject(new Error(`Image processing timed out for ${file.name}`));
+    }, 10000);
 
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
+    const clearTimeoutAndResolve = (result: string) => {
+      clearTimeout(timeoutId);
+      resolve(result);
+    };
 
-      // Create blob URL as fallback for formats that may not load directly
-      const blob = new Blob([file], { type: file.type });
-      const blobUrl = URL.createObjectURL(blob);
+    const clearTimeoutAndReject = (error: Error) => {
+      clearTimeout(timeoutId);
+      reject(error);
+    };
 
-      const img = new Image();
-
-      // Clean up blob URL after use
-      const cleanup = () => {
-        URL.revokeObjectURL(blobUrl);
-      };
-
-      img.onload = () => {
-        cleanup();
+    // Helper to process loaded image
+    const processImage = (img: HTMLImageElement, cleanup?: () => void): void => {
+      try {
+        if (cleanup) cleanup();
 
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
 
         if (!ctx) {
-          reject(new Error('Could not get canvas context'));
+          clearTimeoutAndReject(new Error('Could not get canvas context'));
           return;
         }
 
         let { width, height } = img;
+
+        // Check for zero dimensions (indicates load failure)
+        if (width === 0 || height === 0) {
+          clearTimeoutAndReject(new Error('Image has zero dimensions - may be corrupted or unsupported format'));
+          return;
+        }
 
         // Scale down if larger than max dimension
         if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
@@ -87,71 +93,62 @@ const compressImage = (file: File): Promise<string> => {
 
         canvas.width = width;
         canvas.height = height;
-
-        // Draw scaled image
         ctx.drawImage(img, 0, 0, width, height);
 
-        // Convert to compressed JPEG
         const base64 = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
 
-        // Log size for debugging
+        // Check if conversion worked
+        if (!base64 || base64 === 'data:,') {
+          clearTimeoutAndReject(new Error('Failed to convert image to JPEG'));
+          return;
+        }
+
         const sizeKB = Math.round(base64.length * 0.75 / 1024);
         console.log(`Compressed uploaded image: ${width}x${height}, ~${sizeKB}KB`);
 
-        resolve(base64);
-      };
+        clearTimeoutAndResolve(base64);
+      } catch (err) {
+        clearTimeoutAndReject(new Error(`Image processing error: ${err instanceof Error ? err.message : 'unknown'}`));
+      }
+    };
+
+    // First read the file as a data URL
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+
+      if (!dataUrl || dataUrl.length < 100) {
+        clearTimeoutAndReject(new Error('File read resulted in empty or invalid data'));
+        return;
+      }
+
+      // Create blob URL as fallback
+      const blobUrl = URL.createObjectURL(file);
+      const cleanup = () => URL.revokeObjectURL(blobUrl);
+
+      const img = new Image();
+
+      img.onload = () => processImage(img, cleanup);
 
       img.onerror = () => {
-        // If data URL failed, try blob URL (helps with some formats)
         console.log('Data URL load failed, trying blob URL...');
-        img.onload = () => {
+
+        // Try blob URL as fallback
+        const img2 = new Image();
+        img2.onload = () => processImage(img2, cleanup);
+        img2.onerror = () => {
           cleanup();
-
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-
-          if (!ctx) {
-            reject(new Error('Could not get canvas context'));
-            return;
-          }
-
-          let { width, height } = img;
-
-          if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
-            if (width > height) {
-              height = Math.round((height / width) * MAX_DIMENSION);
-              width = MAX_DIMENSION;
-            } else {
-              width = Math.round((width / height) * MAX_DIMENSION);
-              height = MAX_DIMENSION;
-            }
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          ctx.drawImage(img, 0, 0, width, height);
-
-          const base64 = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
-          const sizeKB = Math.round(base64.length * 0.75 / 1024);
-          console.log(`Compressed uploaded image (via blob): ${width}x${height}, ~${sizeKB}KB`);
-
-          resolve(base64);
+          clearTimeoutAndReject(new Error(`Cannot load image "${file.name}" - format may not be supported by your browser`));
         };
-
-        img.onerror = () => {
-          cleanup();
-          reject(new Error('Failed to load image - format may not be supported'));
-        };
-
-        img.src = blobUrl;
+        img2.src = blobUrl;
       };
 
-      // Try loading from data URL first
       img.src = dataUrl;
     };
 
     reader.onerror = () => {
-      reject(new Error('Failed to read file'));
+      clearTimeoutAndReject(new Error(`Failed to read file "${file.name}"`));
     };
 
     reader.readAsDataURL(file);
@@ -223,15 +220,27 @@ export function CameraViewfinder({
           onAddPhoto(base64);
           console.log(`Successfully processed file ${i + 1}`);
         } catch (err) {
-          console.error(`Failed to process file ${i + 1}:`, err);
+          const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+          console.error(`Failed to process file ${i + 1}:`, errorMsg);
           // Report error to parent for graceful handling
           if (onImageError && !hasError) {
             hasError = true;
-            onImageError('Could not load image. Please try a different photo or use the camera.');
+            // Check if it's likely a format issue
+            if (errorMsg.includes('format') || errorMsg.includes('load') || errorMsg.includes('dimensions')) {
+              onImageError(`Could not load "${file.name}". This image format may not be supported. Please use the camera button or try a JPEG/PNG image.`);
+            } else if (errorMsg.includes('timed out')) {
+              onImageError(`Image processing timed out. The file may be too large or corrupted. Please try a different photo.`);
+            } else {
+              onImageError(`Could not process image: ${errorMsg}`);
+            }
           }
         }
       } else {
         console.log(`Skipping non-image file: ${file.type}`);
+        if (onImageError && !hasError) {
+          hasError = true;
+          onImageError(`"${file.name}" is not a supported image format. Please use JPEG, PNG, GIF, or WebP.`);
+        }
       }
     }
 
